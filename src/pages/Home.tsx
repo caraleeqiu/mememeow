@@ -5,7 +5,7 @@ import { LinkInput } from '../components/LinkInput'
 import { ReadingArea } from '../components/ReadingArea'
 import { DancingCat } from '../components/DancingCat'
 import { content, reading } from '../api/client'
-import { CatMood, Content, ReadingResult, Stats } from '../types'
+import type { CatMood, Content, ReadingResult, Stats } from '../types'
 import './Home.css'
 
 type View = 'home' | 'reading' | 'dancing' | 'history' | 'mistakes' | 'stats'

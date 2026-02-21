@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition'
-import { CatMood, ReadingResult } from '../types'
+import type { CatMood, ReadingResult } from '../types'
 import './ReadingArea.css'
 
 interface ReadingAreaProps {
@@ -14,7 +14,7 @@ interface ReadingAreaProps {
 
 export function ReadingArea({
   sentences,
-  contentId,
+  contentId: _contentId,
   onRecord,
   onMoodChange,
   onComplete,

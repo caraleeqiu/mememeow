@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { CatMood } from '../types'
+import type { CatMood } from '../types'
 import './CarrotCat.css'
 
 interface CarrotCatProps {
