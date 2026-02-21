@@ -15,28 +15,11 @@
 .login__cat-avatar {
   width: 120px;
   height: 120px;
-  background: linear-gradient(135deg, #FFE4C4 0%, #FFDAB9 100%);
+  object-fit: cover;
   border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   border: 4px solid #FF6B35;
   box-shadow: 0 4px 0 #e55a2b, 0 8px 20px rgba(255, 107, 53, 0.3);
-  position: relative;
   animation: float 3s ease-in-out infinite;
-}
-
-.login__cat-face {
-  font-size: 28px;
-  font-family: monospace;
-}
-
-.login__cat-carrot {
-  position: absolute;
-  top: -8px;
-  right: 0;
-  font-size: 32px;
-  transform: rotate(45deg);
 }
 
 @keyframes float {

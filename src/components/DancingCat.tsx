@@ -6,18 +6,8 @@ interface DancingCatProps {
   onComplete: () => void
 }
 
-const danceFrames = [
-  '♪(=^･ω･^=)♪',
-  '♫(=^･ω･^=)♫',
-  '♪(=^▽^=)♪',
-  '♫(=^▽^=)♫',
-  '♪ヾ(=^･ω･^=)ノ♪',
-  '♫ヾ(=^･ω･^=)ノ♫',
-]
-
 export function DancingCat({ duration = 15, onComplete }: DancingCatProps) {
   const [timeLeft, setTimeLeft] = useState(duration)
-  const [frameIndex, setFrameIndex] = useState(0)
 
   useEffect(() => {
     // 倒计时
@@ -32,14 +22,8 @@ export function DancingCat({ duration = 15, onComplete }: DancingCatProps) {
       })
     }, 1000)
 
-    // 动画帧
-    const frameTimer = setInterval(() => {
-      setFrameIndex(i => (i + 1) % danceFrames.length)
-    }, 300)
-
     return () => {
       clearInterval(timer)
-      clearInterval(frameTimer)
     }
   }, [onComplete])
 
@@ -55,8 +39,11 @@ export function DancingCat({ duration = 15, onComplete }: DancingCatProps) {
 
         {/* 跳舞的猫 */}
         <div className="dancing-cat__cat">
-          <div className="dancing-cat__carrot">🥕</div>
-          <span className="dancing-cat__face">{danceFrames[frameIndex]}</span>
+          <img
+            src="/carrot-cat.jpg"
+            alt="萝卜猫跳舞"
+            className="dancing-cat__image"
+          />
         </div>
 
         {/* 音符特效 */}

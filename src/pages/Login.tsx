@@ -43,10 +43,11 @@ export function Login() {
   return (
     <div className="login">
       <div className="login__cat">
-        <div className="login__cat-avatar">
-          <span className="login__cat-face">(=^･ω･^=)</span>
-          <div className="login__cat-carrot">🥕</div>
-        </div>
+        <img
+          src="/carrot-cat.jpg"
+          alt="萝卜猫"
+          className="login__cat-avatar"
+        />
       </div>
 
       <h1 className="login__title">MeMeMeow</h1>

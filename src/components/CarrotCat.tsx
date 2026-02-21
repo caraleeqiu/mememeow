@@ -9,15 +9,6 @@ interface CarrotCatProps {
   carrots?: number
 }
 
-const catFaces: Record<CatMood, string> = {
-  idle: '(=^･ω･^=)',
-  listening: '(=^･ｪ･^=)?',
-  happy: '(=^▽^=)',
-  encouraging: '(=^･ω･^=)ノ',
-  dancing: '♪(=^･ω･^=)♪',
-  highfive: '(=^･ω･^=)🙌'
-}
-
 const defaultMessages: Record<CatMood, string> = {
   idle: '给我一个英文链接吧~',
   listening: '我在听呢...',
@@ -73,11 +64,12 @@ export function CarrotCat({ mood, message, onHighFive, carrots = 0 }: CarrotCatP
           </span>
         ))}
 
-        {/* 猫猫占位符 */}
-        <div className="carrot-cat__placeholder">
-          <span className="carrot-cat__face">{catFaces[mood]}</span>
-          <div className="carrot-cat__carrot">🥕</div>
-        </div>
+        {/* 萝卜猫本体 */}
+        <img
+          src="/carrot-cat.jpg"
+          alt="萝卜猫"
+          className="carrot-cat__image"
+        />
 
         {/* 击掌提示 */}
         {showHighFive && (
