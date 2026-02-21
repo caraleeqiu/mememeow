@@ -1,0 +1,207 @@
+.reading-area {
+  width: 100%;
+  max-width: 600px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 20px;
+  background: white;
+  border-radius: 24px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+}
+
+.reading-area--error {
+  text-align: center;
+  color: #e55a2b;
+}
+
+/* 进度条 */
+.reading-area__progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.reading-area__progress-bar {
+  flex: 1;
+  height: 12px;
+  background: #eee;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.reading-area__progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #FF6B35, #FF8C5A);
+  border-radius: 6px;
+  transition: width 0.3s ease;
+}
+
+.reading-area__progress-text {
+  font-size: 14px;
+  color: #666;
+  white-space: nowrap;
+}
+
+.reading-area__combo {
+  font-size: 14px;
+  color: #FF6B35;
+  font-weight: bold;
+  animation: pulse 0.5s ease infinite;
+}
+
+/* 句子导航 */
+.reading-area__nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+
+.reading-area__nav-dot {
+  width: 28px;
+  height: 28px;
+  border: 2px solid #ddd;
+  border-radius: 50%;
+  background: white;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.reading-area__nav-dot:hover {
+  border-color: #FF6B35;
+}
+
+.reading-area__nav-dot.active {
+  border-color: #FF6B35;
+  background: #FF6B35;
+  color: white;
+}
+
+.reading-area__nav-dot.completed {
+  border-color: #4ECDC4;
+  background: #4ECDC4;
+  color: white;
+}
+
+/* 句子显示 */
+.reading-area__sentence {
+  padding: 24px;
+  background: #f8f8f8;
+  border-radius: 16px;
+  text-align: center;
+}
+
+.reading-area__sentence-number {
+  display: inline-block;
+  background: #FF6B35;
+  color: white;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  margin-bottom: 12px;
+}
+
+.reading-area__sentence-text {
+  font-size: 20px;
+  line-height: 1.6;
+  color: #333;
+  margin: 0;
+}
+
+/* 录音按钮 */
+.reading-area__record-btn {
+  padding: 20px 40px;
+  font-size: 18px;
+  font-weight: bold;
+  border: none;
+  border-radius: 50px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: linear-gradient(135deg, #4ECDC4, #44A08D);
+  color: white;
+  box-shadow: 0 4px 0 #3a9989;
+}
+
+.reading-area__record-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 0 #3a9989;
+}
+
+.reading-area__record-btn:active:not(:disabled),
+.reading-area__record-btn.recording {
+  transform: translateY(2px);
+  box-shadow: 0 2px 0 #3a9989;
+}
+
+.reading-area__record-btn.recording {
+  background: linear-gradient(135deg, #FF6B6B, #EE5A5A);
+  box-shadow: 0 2px 0 #d44a4a;
+  animation: pulse 1s ease infinite;
+}
+
+.reading-area__record-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* 识别结果 */
+.reading-area__transcript {
+  padding: 16px;
+  background: #f0f0f0;
+  border-radius: 12px;
+  text-align: center;
+}
+
+.reading-area__transcript-label {
+  font-size: 12px;
+  color: #888;
+  margin-right: 8px;
+}
+
+.reading-area__transcript-text {
+  font-size: 16px;
+  color: #333;
+}
+
+/* 结果反馈 */
+.reading-area__result {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  border-radius: 12px;
+  font-weight: bold;
+}
+
+.reading-area__result.success {
+  background: #E8F8F5;
+  color: #27ae60;
+}
+
+.reading-area__result.fail {
+  background: #FDEDEC;
+  color: #e74c3c;
+}
+
+.reading-area__result-icon {
+  font-size: 20px;
+}
+
+.reading-area__result-carrot {
+  background: #FF6B35;
+  color: white;
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+}

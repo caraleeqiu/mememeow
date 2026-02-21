@@ -1,0 +1,166 @@
+.dancing-cat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  padding: 40px;
+}
+
+.dancing-cat__stage {
+  position: relative;
+  width: 300px;
+  height: 300px;
+  background: linear-gradient(135deg, #1a1a2e, #16213e);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+/* 迪斯科灯光 */
+.dancing-cat__lights {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.dancing-cat__light {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  opacity: 0.3;
+  mix-blend-mode: screen;
+}
+
+.dancing-cat__light--1 {
+  background: radial-gradient(circle at 30% 30%, #ff6b6b 0%, transparent 50%);
+  animation: disco1 2s ease-in-out infinite;
+}
+
+.dancing-cat__light--2 {
+  background: radial-gradient(circle at 70% 30%, #4ecdc4 0%, transparent 50%);
+  animation: disco2 2s ease-in-out infinite 0.5s;
+}
+
+.dancing-cat__light--3 {
+  background: radial-gradient(circle at 50% 70%, #ffe66d 0%, transparent 50%);
+  animation: disco3 2s ease-in-out infinite 1s;
+}
+
+@keyframes disco1 {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(20px, -20px); }
+}
+
+@keyframes disco2 {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(-20px, 20px); }
+}
+
+@keyframes disco3 {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(10px, -10px); }
+}
+
+/* 跳舞的猫 */
+.dancing-cat__cat {
+  position: relative;
+  width: 160px;
+  height: 160px;
+  background: linear-gradient(135deg, #FFE4C4 0%, #FFDAB9 100%);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 4px solid #FF6B35;
+  animation: dance 0.4s ease infinite;
+  z-index: 10;
+}
+
+.dancing-cat__carrot {
+  position: absolute;
+  top: -10px;
+  right: 10px;
+  font-size: 40px;
+  transform: rotate(45deg);
+  animation: carrotBounce 0.4s ease infinite;
+}
+
+.dancing-cat__face {
+  font-size: 32px;
+  font-family: monospace;
+}
+
+@keyframes dance {
+  0%, 100% { transform: rotate(-8deg) translateY(0); }
+  25% { transform: rotate(8deg) translateY(-15px); }
+  50% { transform: rotate(-8deg) translateY(0); }
+  75% { transform: rotate(8deg) translateY(-15px); }
+}
+
+@keyframes carrotBounce {
+  0%, 100% { transform: rotate(45deg) translateY(0); }
+  50% { transform: rotate(60deg) translateY(-5px); }
+}
+
+/* 音符 */
+.dancing-cat__notes {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.dancing-cat__note {
+  position: absolute;
+  bottom: 30%;
+  font-size: 24px;
+  color: white;
+  animation: floatNote 2s ease-in-out infinite;
+}
+
+@keyframes floatNote {
+  0% {
+    transform: translateY(0) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-100px) rotate(20deg);
+    opacity: 0;
+  }
+}
+
+/* 倒计时 */
+.dancing-cat__timer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.dancing-cat__timer-text {
+  font-size: 36px;
+  font-weight: bold;
+  color: #FF6B35;
+}
+
+.dancing-cat__timer-bar {
+  width: 200px;
+  height: 8px;
+  background: #eee;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.dancing-cat__timer-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #FF6B35, #FF8C5A);
+  border-radius: 4px;
+  transition: width 1s linear;
+}
+
+.dancing-cat__message {
+  font-size: 20px;
+  color: #666;
+  margin: 0;
+}
