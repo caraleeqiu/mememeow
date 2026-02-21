@@ -1,149 +1,408 @@
-const API_BASE = 'http://localhost:3002/api'
-
-function getToken(): string | null {
-  return localStorage.getItem('mememeow_token')
-}
-
-async function request<T>(
-  endpoint: string,
-  options: RequestInit = {}
-): Promise<T> {
-  const token = getToken()
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...options.headers,
-  }
-
-  const response = await fetch(`${API_BASE}${endpoint}`, {
-    ...options,
-    headers,
-  })
-
-  const data = await response.json()
-
-  if (!response.ok) {
-    throw new Error(data.error || 'Request failed')
-  }
-
-  return data
-}
-
-// Auth
-export const auth = {
-  register: (email: string, password: string) =>
-    request<{ id: string; email: string; token: string; carrots: number }>('/auth/register', {
-      method: 'POST',
-      body: JSON.stringify({ email, password }),
-    }),
-
-  login: (email: string, password: string) =>
-    request<{ id: string; email: string; token: string; carrots: number }>('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ email, password }),
-    }),
-
-  me: () => request<{ id: string; email: string; carrots: number }>('/auth/me'),
-}
+import { supabase } from '../lib/supabase'
 
 // Content
 export const content = {
-  extract: (url: string) =>
-    request<{
-      id: string
-      title: string
-      type: string
-      platform: string
-      sentences: string[]
-      totalSentences: number
-    }>('/content/extract', {
-      method: 'POST',
-      body: JSON.stringify({ url }),
-    }),
+  // 粘贴文本创建内容
+  async paste(title: string, text: string) {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
 
-  paste: (title: string, text: string) =>
-    request<{
-      id: string
-      title: string
-      type: string
-      platform: string
-      sentences: string[]
-      totalSentences: number
-    }>('/content/paste', {
-      method: 'POST',
-      body: JSON.stringify({ title, text }),
-    }),
+    // 分割句子
+    const sentences = text
+      .replace(/\s+/g, ' ')
+      .split(/(?<=[.!?])\s+/)
+      .map((s: string) => s.trim())
+      .filter((s: string) => s.length > 10 && s.length < 200)
 
-  list: () =>
-    request<
-      {
-        id: string
-        url: string
-        title: string
-        type: string
-        platform: string
-        sentences: string[]
-        totalSentences: number
-        created_at: string
-      }[]
-    >('/content'),
+    if (sentences.length === 0) {
+      throw new Error('No valid sentences found')
+    }
 
-  get: (id: string) =>
-    request<{
-      id: string
-      url: string
-      title: string
-      type: string
-      platform: string
-      sentences: string[]
-    }>(`/content/${id}`),
+    const { data, error } = await supabase
+      .from('contents')
+      .insert({
+        user_id: user.id,
+        url: 'pasted',
+        title: title || 'Pasted Text',
+        type: 'article',
+        platform: 'paste',
+        sentences,
+      })
+      .select()
+      .single()
+
+    if (error) throw error
+
+    return {
+      ...data,
+      totalSentences: sentences.length,
+    }
+  },
+
+  // 从 URL 提取内容（简化版：仅支持文章抓取）
+  async extract(url: string) {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+
+    // 检测平台
+    const urlLower = url.toLowerCase()
+    let platform = 'news'
+    let type = 'article'
+
+    if (urlLower.includes('youtube.com') || urlLower.includes('youtu.be')) {
+      platform = 'youtube'
+      type = 'video'
+    } else if (urlLower.includes('tiktok.com')) {
+      platform = 'tiktok'
+      type = 'video'
+    } else if (urlLower.includes('instagram.com')) {
+      platform = 'instagram'
+      type = 'video'
+    } else if (urlLower.includes('twitter.com') || urlLower.includes('x.com')) {
+      platform = 'twitter'
+      type = 'video'
+    } else if (urlLower.includes('medium.com')) {
+      platform = 'medium'
+    }
+
+    // 对于视频平台，暂时提示用户手动粘贴
+    if (type === 'video') {
+      throw new Error('Video platforms require server-side processing. Please paste the transcript directly for now.')
+    }
+
+    // 使用 CORS 代理获取文章内容
+    try {
+      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`
+      const response = await fetch(proxyUrl)
+      const html = await response.text()
+
+      // 简单提取文本
+      const parser = new DOMParser()
+      const doc = parser.parseFromString(html, 'text/html')
+
+      // 移除 script 和 style
+      doc.querySelectorAll('script, style, nav, header, footer').forEach(el => el.remove())
+
+      // 获取主要内容
+      const article = doc.querySelector('article') || doc.querySelector('main') || doc.body
+      const text = article?.textContent || ''
+
+      // 分割句子
+      const sentences = text
+        .replace(/\s+/g, ' ')
+        .split(/(?<=[.!?])\s+/)
+        .map(s => s.trim())
+        .filter(s => s.length > 20 && s.length < 200)
+        .slice(0, 50) // 最多 50 句
+
+      if (sentences.length === 0) {
+        throw new Error('Could not extract content from this URL')
+      }
+
+      // 获取标题
+      const title = doc.querySelector('title')?.textContent || 'Article'
+
+      const { data, error } = await supabase
+        .from('contents')
+        .insert({
+          user_id: user.id,
+          url,
+          title,
+          type,
+          platform,
+          sentences,
+        })
+        .select()
+        .single()
+
+      if (error) throw error
+
+      return {
+        ...data,
+        totalSentences: sentences.length,
+      }
+    } catch (error: any) {
+      throw new Error(`Failed to extract content: ${error.message}`)
+    }
+  },
+
+  // 获取用户所有内容
+  async list() {
+    const { data, error } = await supabase
+      .from('contents')
+      .select('*')
+      .order('created_at', { ascending: false })
+
+    if (error) throw error
+
+    return data.map(c => ({
+      ...c,
+      totalSentences: c.sentences.length,
+    }))
+  },
+
+  // 获取单个内容
+  async get(id: string) {
+    const { data, error } = await supabase
+      .from('contents')
+      .select('*')
+      .eq('id', id)
+      .single()
+
+    if (error) throw error
+    return data
+  },
 }
 
 // Reading
 export const reading = {
-  record: (contentId: string, sentenceIndex: number, sentenceText: string, userSpeech: string) =>
-    request<{
-      isMatch: boolean
-      score: number
-      carrotsEarned: number
-      attempts: number
-    }>('/reading/record', {
-      method: 'POST',
-      body: JSON.stringify({ contentId, sentenceIndex, sentenceText, userSpeech }),
-    }),
+  // 记录跟读
+  async record(contentId: string, sentenceIndex: number, sentenceText: string, userSpeech: string) {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
 
-  progress: (contentId: string) =>
-    request<{
-      completed: number
-      total: number
-      percentage: number
-      records: { sentence_index: number; is_correct: number; attempts: number }[]
-    }>(`/reading/progress/${contentId}`),
+    // 匹配算法
+    const normalize = (text: string) =>
+      text.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim()
 
-  mistakes: (includeMastered = false) =>
-    request<
-      {
-        id: string
-        content_id: string
-        sentence_index: number
-        sentence_text: string
-        attempts: number
-        is_mastered: number
-      }[]
-    >(`/reading/mistakes?includeMastered=${includeMastered}`),
+    const originalNorm = normalize(sentenceText)
+    const spokenNorm = normalize(userSpeech)
 
-  masterMistake: (id: string) =>
-    request<{ success: boolean }>(`/reading/mistakes/${id}/master`, { method: 'POST' }),
+    let score = 0
+    let isMatch = false
 
-  stats: () =>
-    request<{
-      totalReadings: number
-      correctReadings: number
-      accuracy: number
-      totalContents: number
-      mistakesCount: number
-      danceCount: number
-    }>('/reading/stats'),
+    if (originalNorm === spokenNorm) {
+      score = 100
+      isMatch = true
+    } else {
+      const originalWords = originalNorm.split(' ')
+      const spokenWords = spokenNorm.split(' ')
+      let matchedWords = 0
+      for (const word of spokenWords) {
+        if (originalWords.includes(word)) matchedWords++
+      }
+      score = Math.round((matchedWords / originalWords.length) * 100)
+      isMatch = score >= 80
+    }
 
-  dance: () => request<{ success: boolean; carrotsRemaining: number }>('/reading/dance', { method: 'POST' }),
+    // 检查是否已有记录
+    const { data: existing } = await supabase
+      .from('reading_records')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('content_id', contentId)
+      .eq('sentence_index', sentenceIndex)
+      .single()
+
+    let carrotsEarned = 0
+    let attempts = 1
+
+    if (existing) {
+      attempts = existing.attempts + 1
+      // 更新记录
+      await supabase
+        .from('reading_records')
+        .update({
+          user_speech: userSpeech,
+          is_correct: isMatch,
+          attempts,
+        })
+        .eq('id', existing.id)
+
+      // 如果之前错误现在正确，给萝卜
+      if (isMatch && !existing.is_correct) {
+        carrotsEarned = 1
+      }
+    } else {
+      // 创建新记录
+      await supabase
+        .from('reading_records')
+        .insert({
+          user_id: user.id,
+          content_id: contentId,
+          sentence_index: sentenceIndex,
+          sentence_text: sentenceText,
+          user_speech: userSpeech,
+          is_correct: isMatch,
+        })
+
+      if (isMatch) {
+        carrotsEarned = 1
+      }
+    }
+
+    // 更新萝卜
+    if (carrotsEarned > 0) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('carrots')
+        .eq('id', user.id)
+        .single()
+
+      if (profile) {
+        await supabase
+          .from('profiles')
+          .update({ carrots: profile.carrots + carrotsEarned })
+          .eq('id', user.id)
+      }
+    }
+
+    // 错误次数超过2次，加入错题本
+    if (!isMatch && attempts >= 2) {
+      const { data: existingMistake } = await supabase
+        .from('mistakes')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('content_id', contentId)
+        .eq('sentence_index', sentenceIndex)
+        .single()
+
+      if (existingMistake) {
+        await supabase
+          .from('mistakes')
+          .update({ attempts: existingMistake.attempts + 1, is_mastered: false })
+          .eq('id', existingMistake.id)
+      } else {
+        await supabase
+          .from('mistakes')
+          .insert({
+            user_id: user.id,
+            content_id: contentId,
+            sentence_index: sentenceIndex,
+            sentence_text: sentenceText,
+          })
+      }
+    }
+
+    return { isMatch, score, carrotsEarned, attempts }
+  },
+
+  // 获取内容进度
+  async progress(contentId: string) {
+    const { data: records, error } = await supabase
+      .from('reading_records')
+      .select('sentence_index, is_correct, attempts')
+      .eq('content_id', contentId)
+
+    if (error) throw error
+
+    const { data: contentData } = await supabase
+      .from('contents')
+      .select('sentences')
+      .eq('id', contentId)
+      .single()
+
+    const totalSentences = contentData?.sentences?.length || 0
+    const completed = records?.filter(r => r.is_correct).length || 0
+
+    return {
+      completed,
+      total: totalSentences,
+      percentage: totalSentences > 0 ? Math.round((completed / totalSentences) * 100) : 0,
+      records: records || [],
+    }
+  },
+
+  // 获取错题本
+  async mistakes(includeMastered = false) {
+    let query = supabase.from('mistakes').select('*').order('created_at', { ascending: false })
+
+    if (!includeMastered) {
+      query = query.eq('is_mastered', false)
+    }
+
+    const { data, error } = await query
+    if (error) throw error
+    return data || []
+  },
+
+  // 标记错题已掌握
+  async masterMistake(id: string) {
+    const { error } = await supabase
+      .from('mistakes')
+      .update({ is_mastered: true })
+      .eq('id', id)
+
+    if (error) throw error
+    return { success: true }
+  },
+
+  // 获取统计
+  async stats() {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+
+    const { count: totalReadings } = await supabase
+      .from('reading_records')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+
+    const { count: correctReadings } = await supabase
+      .from('reading_records')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('is_correct', true)
+
+    const { count: totalContents } = await supabase
+      .from('contents')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+
+    const { count: mistakesCount } = await supabase
+      .from('mistakes')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('is_mastered', false)
+
+    const { count: danceCount } = await supabase
+      .from('dance_records')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+
+    return {
+      totalReadings: totalReadings || 0,
+      correctReadings: correctReadings || 0,
+      accuracy: totalReadings ? Math.round(((correctReadings || 0) / totalReadings) * 100) : 0,
+      totalContents: totalContents || 0,
+      mistakesCount: mistakesCount || 0,
+      danceCount: danceCount || 0,
+    }
+  },
+
+  // 兑换跳舞
+  async dance() {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+
+    const DANCE_COST = 10
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('carrots')
+      .eq('id', user.id)
+      .single()
+
+    if (!profile || profile.carrots < DANCE_COST) {
+      throw new Error(`Not enough carrots. Need ${DANCE_COST}, have ${profile?.carrots || 0}`)
+    }
+
+    // 扣除萝卜
+    await supabase
+      .from('profiles')
+      .update({ carrots: profile.carrots - DANCE_COST })
+      .eq('id', user.id)
+
+    // 记录跳舞
+    await supabase
+      .from('dance_records')
+      .insert({
+        user_id: user.id,
+        carrots_spent: DANCE_COST,
+      })
+
+    return {
+      success: true,
+      carrotsRemaining: profile.carrots - DANCE_COST,
+    }
+  },
 }

@@ -11,7 +11,7 @@ import './Home.css'
 type View = 'home' | 'reading' | 'dancing' | 'history' | 'mistakes' | 'stats'
 
 export function Home() {
-  const { user, logout, updateCarrots } = useAuth()
+  const { user, profile, logout, updateCarrots } = useAuth()
   const [view, setView] = useState<View>('home')
   const [catMood, setCatMood] = useState<CatMood>('idle')
   const [catMessage, setCatMessage] = useState<string>()
@@ -117,7 +117,7 @@ export function Home() {
     )
 
     if (result.carrotsEarned > 0) {
-      updateCarrots(user!.carrots + result.carrotsEarned)
+      updateCarrots((profile?.carrots || 0) + result.carrotsEarned)
     }
 
     return result
@@ -144,7 +144,7 @@ export function Home() {
   }
 
   const handleDance = async () => {
-    if (user!.carrots < 10) {
+    if ((profile?.carrots || 0) < 10) {
       setCatMood('encouraging')
       setCatMessage('萝卜不够哦，需要10个🥕')
       return
@@ -297,7 +297,7 @@ export function Home() {
               mood={catMood}
               message={catMessage}
               onHighFive={handleHighFive}
-              carrots={user?.carrots || 0}
+              carrots={profile?.carrots || 0}
             />
 
             <LinkInput
@@ -313,7 +313,7 @@ export function Home() {
               <button
                 className="home__action-btn home__action-btn--dance"
                 onClick={handleDance}
-                disabled={user!.carrots < 10}
+                disabled={(profile?.carrots || 0) < 10}
               >
                 💃 看猫跳舞 (10🥕)
               </button>

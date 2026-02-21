@@ -1,13 +1,20 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
-import { auth } from '../api/client'
-import { User } from '../types'
+import { User, Session } from '@supabase/supabase-js'
+import { supabase } from '../lib/supabase'
+
+interface Profile {
+  id: string
+  email: string
+  carrots: number
+}
 
 interface AuthContextType {
   user: User | null
+  profile: Profile | null
   isLoading: boolean
   login: (email: string, password: string) => Promise<void>
   register: (email: string, password: string) => Promise<void>
-  logout: () => void
+  logout: () => Promise<void>
   updateCarrots: (carrots: number) => void
 }
 
@@ -15,51 +22,100 @@ const AuthContext = createContext<AuthContextType | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
+  const [profile, setProfile] = useState<Profile | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    const token = localStorage.getItem('mememeow_token')
-    if (token) {
-      auth.me()
-        .then((data) => {
-          setUser({ ...data, token })
-        })
-        .catch(() => {
-          localStorage.removeItem('mememeow_token')
-        })
-        .finally(() => {
-          setIsLoading(false)
-        })
-    } else {
-      setIsLoading(false)
-    }
+    // 获取当前 session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null)
+      if (session?.user) {
+        loadProfile(session.user.id)
+      } else {
+        setIsLoading(false)
+      }
+    })
+
+    // 监听 auth 状态变化
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (_event, session) => {
+        setUser(session?.user ?? null)
+        if (session?.user) {
+          await loadProfile(session.user.id)
+        } else {
+          setProfile(null)
+        }
+      }
+    )
+
+    return () => subscription.unsubscribe()
   }, [])
 
+  const loadProfile = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single()
+
+      if (error) throw error
+      setProfile(data)
+    } catch (error) {
+      console.error('Error loading profile:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   const login = async (email: string, password: string) => {
-    const data = await auth.login(email, password)
-    localStorage.setItem('mememeow_token', data.token)
-    setUser(data)
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
+    if (error) throw error
   }
 
   const register = async (email: string, password: string) => {
-    const data = await auth.register(email, password)
-    localStorage.setItem('mememeow_token', data.token)
-    setUser(data)
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+    })
+    if (error) throw error
   }
 
-  const logout = () => {
-    localStorage.removeItem('mememeow_token')
-    setUser(null)
+  const logout = async () => {
+    const { error } = await supabase.auth.signOut()
+    if (error) throw error
+    setProfile(null)
   }
 
   const updateCarrots = (carrots: number) => {
-    if (user) {
-      setUser({ ...user, carrots })
+    if (profile) {
+      setProfile({ ...profile, carrots })
+      // 同步更新到数据库
+      supabase
+        .from('profiles')
+        .update({ carrots })
+        .eq('id', profile.id)
+        .then(({ error }) => {
+          if (error) console.error('Error updating carrots:', error)
+        })
     }
   }
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, register, logout, updateCarrots }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        profile,
+        isLoading,
+        login,
+        register,
+        logout,
+        updateCarrots,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   )
