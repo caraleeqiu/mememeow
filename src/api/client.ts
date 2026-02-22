@@ -25,20 +25,28 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}, timeout 
 export const content = {
   // 粘贴文本创建内容
   async paste(title: string, text: string) {
+    console.log('[paste] Starting...')
+
     const { data: { user } } = await supabase.auth.getUser()
+    console.log('[paste] Got user:', user?.id)
+
     if (!user) throw new Error('Not authenticated')
 
-    // 分割句子
+    // 分割句子 - 更宽松的过滤
     const sentences = text
       .replace(/\s+/g, ' ')
       .split(/(?<=[.!?])\s+/)
       .map((s: string) => s.trim())
-      .filter((s: string) => s.length > 10 && s.length < 200)
+      .filter((s: string) => s.length > 5) // 放宽限制
+      .slice(0, 50) // 最多50句
+
+    console.log('[paste] Sentences:', sentences.length)
 
     if (sentences.length === 0) {
-      throw new Error('No valid sentences found')
+      throw new Error('No valid sentences found. Make sure the text contains complete sentences.')
     }
 
+    console.log('[paste] Inserting to Supabase...')
     const { data, error } = await supabase
       .from('contents')
       .insert({
@@ -51,6 +59,8 @@ export const content = {
       })
       .select()
       .single()
+
+    console.log('[paste] Insert result:', { data, error })
 
     if (error) throw error
 
