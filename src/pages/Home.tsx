@@ -304,9 +304,14 @@ export function Home() {
               onSubmit={handleSubmitUrl}
               onPaste={handlePasteText}
               isLoading={isLoading}
+              onCancel={() => {
+                setIsLoading(false)
+                setError('')
+                setCatMood('idle')
+                setCatMessage(undefined)
+              }}
+              error={error}
             />
-
-            {error && <p className="home__error">{error}</p>}
 
             {/* 快捷操作 */}
             <div className="home__actions">

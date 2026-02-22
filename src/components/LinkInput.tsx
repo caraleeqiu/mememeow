@@ -5,9 +5,11 @@ interface LinkInputProps {
   onSubmit: (url: string) => Promise<void>
   onPaste: (title: string, text: string) => Promise<void>
   isLoading: boolean
+  onCancel?: () => void
+  error?: string
 }
 
-export function LinkInput({ onSubmit, onPaste, isLoading }: LinkInputProps) {
+export function LinkInput({ onSubmit, onPaste, isLoading, onCancel, error }: LinkInputProps) {
   const [url, setUrl] = useState('')
   const [showPaste, setShowPaste] = useState(false)
   const [pasteTitle, setPasteTitle] = useState('')
@@ -42,8 +44,13 @@ export function LinkInput({ onSubmit, onPaste, isLoading }: LinkInputProps) {
             disabled={isLoading}
           />
           <button type="submit" className="link-input__btn" disabled={isLoading || !url.trim()}>
-            {isLoading ? '加载中...' : '开始'}
+            {isLoading ? '提取中...' : '开始'}
           </button>
+          {isLoading && onCancel && (
+            <button type="button" className="link-input__cancel" onClick={onCancel}>
+              取消
+            </button>
+          )}
         </form>
       ) : (
         <form onSubmit={handlePaste} className="link-input__paste-form">
@@ -76,6 +83,12 @@ export function LinkInput({ onSubmit, onPaste, isLoading }: LinkInputProps) {
       >
         {showPaste ? '← 输入链接' : '或者直接粘贴文字 →'}
       </button>
+
+      {error && (
+        <div className="link-input__error">
+          {error}
+        </div>
+      )}
 
       <div className="link-input__supported">
         支持: YouTube · TikTok · Instagram · X · Medium · 新闻网站

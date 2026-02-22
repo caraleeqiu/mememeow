@@ -87,6 +87,32 @@
   color: #FF6B35;
 }
 
+.link-input__cancel {
+  padding: 14px 20px;
+  background: #f5f5f5;
+  color: #666;
+  border: none;
+  border-radius: 16px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.link-input__cancel:hover {
+  background: #eee;
+  color: #333;
+}
+
+.link-input__error {
+  background: #fff0f0;
+  border: 2px solid #ffcccc;
+  border-radius: 12px;
+  padding: 12px 16px;
+  color: #cc0000;
+  font-size: 14px;
+  text-align: center;
+}
+
 .link-input__supported {
   text-align: center;
   font-size: 12px;

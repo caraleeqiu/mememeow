@@ -1,5 +1,26 @@
 import { supabase } from '../lib/supabase'
 
+// Fetch with timeout
+async function fetchWithTimeout(url: string, options: RequestInit = {}, timeout = 15000): Promise<Response> {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeout)
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    })
+    return response
+  } catch (error: any) {
+    if (error.name === 'AbortError') {
+      throw new Error('Request timeout - please try again')
+    }
+    throw error
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
 // Content
 export const content = {
   // 粘贴文本创建内容
@@ -68,11 +89,11 @@ export const content = {
     // 对于视频平台，使用服务端 API 提取
     if (type === 'video') {
       try {
-        const apiResponse = await fetch('/api/extract', {
+        const apiResponse = await fetchWithTimeout('/api/extract', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ url }),
-        })
+        }, 30000)
 
         if (!apiResponse.ok) {
           const errorData = await apiResponse.json()
@@ -112,7 +133,7 @@ export const content = {
     // 使用 CORS 代理获取文章内容
     try {
       const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`
-      const response = await fetch(proxyUrl)
+      const response = await fetchWithTimeout(proxyUrl, {}, 15000)
       const html = await response.text()
 
       // 简单提取文本
