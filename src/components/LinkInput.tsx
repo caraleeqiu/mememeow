@@ -135,13 +135,13 @@ export function LinkInput({ onSubmit, onPaste, onFile, isLoading, onCancel, erro
           <label className="link-input__file-label">
             <input
               type="file"
-              accept=".txt,.md,.pdf"
+              accept=".txt,.pdf"
               onChange={handleFileChange}
               disabled={isLoading}
               className="link-input__file-input"
             />
             <span className="link-input__file-btn">
-              {isLoading ? '处理中...' : '选择文件 (.txt, .md, .pdf)'}
+              {isLoading ? '处理中...' : '选择文件 (.txt, .pdf)'}
             </span>
           </label>
         </div>
@@ -154,7 +154,7 @@ export function LinkInput({ onSubmit, onPaste, onFile, isLoading, onCancel, erro
       )}
 
       <div className="link-input__supported">
-        支持: YouTube · TikTok · Shorts · 仅限英文内容
+        支持: YouTube/Youtube Shorts  Tiktok
       </div>
     </div>
   )

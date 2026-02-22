@@ -39,17 +39,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         contents: [{
           parts: [
             {
-              text: `Extract all text from this PDF document and format it for English reading practice.
+              text: `Extract ONLY English sentences from this PDF document for reading practice.
 
-IMPORTANT: First check the language of the content.
-If the content is NOT primarily in English, respond with ONLY: "NOT_ENGLISH: [language name]"
+Rules:
+1. Extract ONLY sentences that are in English
+2. Skip any Chinese, Japanese, Korean or other non-English text
+3. Split into sentences (one per line)
+4. Fix any OCR errors or formatting issues
+5. Each sentence should be 10-150 characters
+6. Output ONLY the English sentences, no explanations
 
-If the content IS in English:
-1. Extract all readable text
-2. Split into sentences (one per line)
-3. Fix any OCR errors or formatting issues
-4. Each sentence should be 10-150 characters
-5. Output ONLY the sentences, no explanations`
+If there are NO English sentences at all, respond with ONLY: "NO_ENGLISH_FOUND"`
             },
             {
               inline_data: {
@@ -77,10 +77,9 @@ If the content IS in English:
 
     console.log('[extract-pdf] Gemini response length:', text.length)
 
-    // 检查是否为非英语
-    if (text.startsWith('NOT_ENGLISH:')) {
-      const lang = text.replace('NOT_ENGLISH:', '').trim()
-      return res.status(400).json({ error: `检测到${lang}内容，目前只支持英文哦~` })
+    // 检查是否没有英文内容
+    if (text.trim() === 'NO_ENGLISH_FOUND') {
+      return res.status(400).json({ error: '未检测到英文内容，请上传包含英文的文档~' })
     }
 
     // 解析句子
