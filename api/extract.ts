@@ -280,10 +280,11 @@ async function extractYouTube(url: string) {
     }
   } catch (error: any) {
     console.log('[youtube] Transcript not available:', error.message)
-    throw new Error('该视频没有字幕，请选择有英文字幕的视频，或使用"粘贴文字"功能')
   }
 
-  throw new Error('该视频没有可用的字幕内容')
+  // 方案2: 下载音频 + Gemini 转写
+  console.log('[youtube] Falling back to audio download + Gemini...')
+  return await extractWithGemini(url, 'youtube')
 }
 
 // Extract audio and transcribe using Gemini
