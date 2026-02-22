@@ -60,7 +60,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'Unsupported platform' })
   } catch (error: any) {
     console.error('Extraction error:', error)
-    return res.status(500).json({ error: error.message || 'Extraction failed' })
+    const errorMsg = error.name === 'AbortError'
+      ? '请求超时，请稍后重试'
+      : (error.message || 'Extraction failed')
+    return res.status(500).json({ error: errorMsg })
   }
 }
 
@@ -77,8 +80,8 @@ async function extractWithGemini(url: string, platform: string) {
   }
 
   console.log('[extract] Step 2: Downloading audio...')
-  // Step 2: Download audio
-  const audioResponse = await fetch(audioUrl)
+  // Step 2: Download audio with timeout
+  const audioResponse = await fetchWithTimeout(audioUrl, {}, 30000) // 30s timeout
   if (!audioResponse.ok) {
     throw new Error('音频下载失败')
   }
@@ -93,10 +96,10 @@ async function extractWithGemini(url: string, platform: string) {
   }
 
   console.log('[extract] Step 3: Sending to Gemini...')
-  // Step 3: Send to Gemini for transcription
+  // Step 3: Send to Gemini for transcription with timeout
   const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`
 
-  const geminiResponse = await fetch(geminiUrl, {
+  const geminiResponse = await fetchWithTimeout(geminiUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -127,7 +130,7 @@ Rules:
         maxOutputTokens: 4096,
       }
     }),
-  })
+  }, 45000) // 45 second timeout for Gemini
 
   console.log('[extract] Gemini response status:', geminiResponse.status)
 
@@ -164,58 +167,88 @@ Rules:
   }
 }
 
+// Fetch with timeout helper
+async function fetchWithTimeout(url: string, options: RequestInit, timeout = 15000): Promise<Response> {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeout)
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    })
+    return response
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
 // Get audio URL using cobalt.tools API
 async function getAudioUrl(videoUrl: string): Promise<string | null> {
-  try {
-    console.log('[cobalt] Requesting audio for:', videoUrl)
+  // Try multiple cobalt instances
+  const cobaltInstances = [
+    'https://api.cobalt.tools',
+    'https://cobalt-api.kwiatekmiki.com',
+    'https://cobalt.canine.tools',
+  ]
 
-    // Use cobalt.tools API
-    const response = await fetch('https://api.cobalt.tools/', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'User-Agent': 'MeMeMeow/1.0',
-      },
-      body: JSON.stringify({
-        url: videoUrl,
-        downloadMode: 'audio',
-        audioFormat: 'mp3',
-      }),
-    })
+  for (const instance of cobaltInstances) {
+    try {
+      console.log('[cobalt] Trying instance:', instance)
+      console.log('[cobalt] Requesting audio for:', videoUrl)
 
-    console.log('[cobalt] Response status:', response.status)
+      const response = await fetchWithTimeout(`${instance}/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+          url: videoUrl,
+          downloadMode: 'audio',
+          audioFormat: 'mp3',
+        }),
+      }, 20000) // 20 second timeout per instance
 
-    if (!response.ok) {
-      const errorText = await response.text()
-      console.error('[cobalt] API error:', response.status, errorText)
-      return null
+      console.log('[cobalt] Response status:', response.status)
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error('[cobalt] API error:', response.status, errorText)
+        continue // Try next instance
+      }
+
+      const data = await response.json()
+      console.log('[cobalt] Response data:', JSON.stringify(data).slice(0, 200))
+
+      // Handle different response formats
+      let audioUrl = null
+      if (data.url) {
+        audioUrl = data.url
+      } else if (data.status === 'stream' || data.status === 'redirect') {
+        audioUrl = data.url
+      } else if (data.status === 'picker' && data.picker?.[0]?.url) {
+        audioUrl = data.picker[0].url
+      } else if (data.audio) {
+        audioUrl = data.audio
+      }
+
+      if (audioUrl) {
+        console.log('[cobalt] Got audio URL from:', instance)
+        return audioUrl
+      }
+
+      console.error('[cobalt] Unexpected response format:', data)
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        console.error('[cobalt] Timeout for instance:', instance)
+      } else {
+        console.error('[cobalt] Failed for instance:', instance, error.message)
+      }
+      // Continue to next instance
     }
-
-    const data = await response.json()
-    console.log('[cobalt] Response data:', JSON.stringify(data).slice(0, 200))
-
-    // Handle different response formats
-    if (data.url) {
-      return data.url
-    }
-
-    if (data.status === 'stream' || data.status === 'redirect') {
-      return data.url
-    }
-
-    if (data.status === 'picker' && data.picker?.[0]?.url) {
-      return data.picker[0].url
-    }
-
-    if (data.audio) {
-      return data.audio
-    }
-
-    console.error('[cobalt] Unexpected response:', data)
-    return null
-  } catch (error) {
-    console.error('[cobalt] Failed to get audio URL:', error)
-    return null
   }
+
+  console.error('[cobalt] All instances failed')
+  return null
 }
