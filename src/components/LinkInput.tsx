@@ -89,7 +89,7 @@ export function LinkInput({ onSubmit, onPaste, onFile, isLoading, onCancel, erro
             type="url"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder="粘贴视频链接... YouTube, TikTok, Shorts..."
+            placeholder="粘贴视频链接... YouTube/Youtube Shorts, Tiktok"
             className="link-input__field"
             disabled={isLoading}
           />
