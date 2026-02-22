@@ -160,8 +160,16 @@ Rules:
 
     if (!geminiResponse.ok) {
       const errorData = await geminiResponse.text()
-      console.error('[tiktok] Gemini error:', errorData)
-      throw new Error('Gemini 转写失败')
+      console.error('[tiktok] Gemini error:', geminiResponse.status, errorData)
+      // 解析错误信息
+      let errorMsg = 'Gemini 转写失败'
+      try {
+        const errorJson = JSON.parse(errorData)
+        if (errorJson.error?.message) {
+          errorMsg = `Gemini: ${errorJson.error.message}`
+        }
+      } catch {}
+      throw new Error(errorMsg)
     }
 
     const geminiData = await geminiResponse.json()
@@ -195,89 +203,80 @@ Rules:
   }
 }
 
-// Extract YouTube transcript using free API
+// Extract YouTube transcript - 先尝试字幕，失败则用 Gemini 转写
 async function extractYouTube(url: string) {
-  console.log('[youtube] Extracting transcript for:', url)
+  console.log('[youtube] Extracting for:', url)
 
+  // 提取视频 ID
+  let videoId = ''
+  if (url.includes('youtu.be/')) {
+    videoId = url.split('youtu.be/')[1].split('?')[0]
+  } else if (url.includes('/shorts/')) {
+    videoId = url.split('/shorts/')[1].split('?')[0]
+  } else if (url.includes('v=')) {
+    videoId = url.split('v=')[1].split('&')[0]
+  }
+
+  if (!videoId) {
+    throw new Error('无法解析 YouTube 视频 ID')
+  }
+
+  console.log('[youtube] Video ID:', videoId)
+
+  // 方案1: 尝试获取字幕（快速免费）
   try {
-    // 提取视频 ID
-    let videoId = ''
-    if (url.includes('youtu.be/')) {
-      videoId = url.split('youtu.be/')[1].split('?')[0]
-    } else if (url.includes('/shorts/')) {
-      videoId = url.split('/shorts/')[1].split('?')[0]
-    } else if (url.includes('v=')) {
-      videoId = url.split('v=')[1].split('&')[0]
-    }
-
-    if (!videoId) {
-      throw new Error('无法解析 YouTube 视频 ID')
-    }
-
-    console.log('[youtube] Video ID:', videoId)
-
-    // 获取字幕
+    console.log('[youtube] Trying transcript API...')
     const transcript = await YoutubeTranscript.fetchTranscript(videoId)
-    console.log('[youtube] Got transcript, segments:', transcript.length)
 
-    if (!transcript || transcript.length === 0) {
-      throw new Error('该视频没有字幕，请选择有字幕的视频')
-    }
+    if (transcript && transcript.length > 0) {
+      console.log('[youtube] Got transcript, segments:', transcript.length)
 
-    // 合并短句子，拆分长句子
-    const sentences: string[] = []
-    let currentSentence = ''
+      // 合并短句子，拆分长句子
+      const sentences: string[] = []
+      let currentSentence = ''
 
-    for (const segment of transcript) {
-      const text = segment.text.replace(/\n/g, ' ').trim()
-      if (!text) continue
+      for (const segment of transcript) {
+        const text = segment.text.replace(/\n/g, ' ').trim()
+        if (!text) continue
 
-      currentSentence += (currentSentence ? ' ' : '') + text
+        currentSentence += (currentSentence ? ' ' : '') + text
 
-      // 如果句子以句号/问号/感叹号结尾，或者太长了，就保存
-      if (/[.!?]$/.test(currentSentence) || currentSentence.length > 150) {
-        if (currentSentence.length >= 10 && currentSentence.length <= 200) {
-          sentences.push(currentSentence)
-        } else if (currentSentence.length > 200) {
-          // 太长的句子按句号拆分
-          const parts = currentSentence.split(/(?<=[.!?])\s+/)
-          for (const part of parts) {
-            if (part.length >= 10 && part.length <= 200) {
-              sentences.push(part.trim())
+        if (/[.!?]$/.test(currentSentence) || currentSentence.length > 150) {
+          if (currentSentence.length >= 10 && currentSentence.length <= 200) {
+            sentences.push(currentSentence)
+          } else if (currentSentence.length > 200) {
+            const parts = currentSentence.split(/(?<=[.!?])\s+/)
+            for (const part of parts) {
+              if (part.length >= 10 && part.length <= 200) {
+                sentences.push(part.trim())
+              }
             }
           }
+          currentSentence = ''
         }
-        currentSentence = ''
+      }
+
+      if (currentSentence.length >= 10 && currentSentence.length <= 200) {
+        sentences.push(currentSentence)
+      }
+
+      if (sentences.length > 0) {
+        console.log('[youtube] Processed sentences:', sentences.length)
+        return {
+          title: 'YouTube Video',
+          sentences: sentences.slice(0, 50),
+          platform: 'youtube',
+          type: 'video',
+        }
       }
     }
-
-    // 处理剩余的句子
-    if (currentSentence.length >= 10 && currentSentence.length <= 200) {
-      sentences.push(currentSentence)
-    }
-
-    console.log('[youtube] Processed sentences:', sentences.length)
-
-    if (sentences.length === 0) {
-      throw new Error('未能提取到有效句子')
-    }
-
-    return {
-      title: 'YouTube Video',
-      sentences: sentences.slice(0, 50), // 最多50句
-      platform: 'youtube',
-      type: 'video',
-    }
   } catch (error: any) {
-    console.error('[youtube] Error:', error)
-    if (error.message.includes('Transcript is disabled') || error.message.includes('disabled')) {
-      throw new Error('该视频没有字幕。请选择有 CC 字幕的视频，或使用"粘贴文字"功能。')
-    }
-    if (error.message.includes('No transcript')) {
-      throw new Error('该视频没有可用的字幕')
-    }
-    throw new Error(`YouTube 提取失败: ${error.message}`)
+    console.log('[youtube] Transcript not available:', error.message)
   }
+
+  // 方案2: 下载音频 + Gemini 转写
+  console.log('[youtube] Falling back to audio download + Gemini...')
+  return await extractWithGemini(url, 'youtube')
 }
 
 // Extract audio and transcribe using Gemini
