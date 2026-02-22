@@ -6,7 +6,7 @@ import ytdl from '@distube/ytdl-core'
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ''
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || ''
 
-const API_VERSION = 'v11-tiktok-lang-check'
+const API_VERSION = 'v12-instagram-fix'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   console.log('[extract] API Version:', API_VERSION)
@@ -175,18 +175,16 @@ async function extractInstagram(url: string) {
   console.log('[instagram] Extracting for:', url)
 
   try {
-    // 使用 Instagram downloader API
+    // 使用 Instagram downloader API (GET /convert?url=...)
     console.log('[instagram] Getting download URL...')
     const rapidResponse = await fetchWithTimeout(
-      `https://instagram-downloader-download-instagram-videos-stories1.p.rapidapi.com/get-info-rapidapi`,
+      `https://instagram-downloader-download-instagram-stories-videos4.p.rapidapi.com/convert?url=${encodeURIComponent(url)}`,
       {
-        method: 'POST',
+        method: 'GET',
         headers: {
           'x-rapidapi-key': RAPIDAPI_KEY,
-          'x-rapidapi-host': 'instagram-downloader-download-instagram-videos-stories1.p.rapidapi.com',
-          'Content-Type': 'application/json',
+          'x-rapidapi-host': 'instagram-downloader-download-instagram-stories-videos4.p.rapidapi.com',
         },
-        body: JSON.stringify({ url }),
       },
       20000
     )
@@ -199,11 +197,15 @@ async function extractInstagram(url: string) {
 
     if (rapidResponse.ok) {
       const rapidData = JSON.parse(rapidText)
-      // 尝试获取视频链接
-      downloadUrl = rapidData.download_url || rapidData.video_url || rapidData.url
+      // 尝试获取视频链接 - 检查多种可能的字段
+      downloadUrl = rapidData.url || rapidData.download_url || rapidData.video_url
+      if (rapidData.result && Array.isArray(rapidData.result)) {
+        const videoItem = rapidData.result.find((m: any) => m.type === 'video' || m.url?.includes('.mp4'))
+        downloadUrl = videoItem?.url || rapidData.result[0]?.url || downloadUrl
+      }
       if (rapidData.media && Array.isArray(rapidData.media)) {
         const videoMedia = rapidData.media.find((m: any) => m.type === 'video')
-        downloadUrl = videoMedia?.url || rapidData.media[0]?.url
+        downloadUrl = videoMedia?.url || rapidData.media[0]?.url || downloadUrl
       }
       title = rapidData.title || rapidData.caption?.slice(0, 50) || 'Instagram Video'
     }
