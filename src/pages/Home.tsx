@@ -3,12 +3,12 @@ import { useAuth } from '../context/AuthContext'
 import { CarrotCat } from '../components/CarrotCat'
 import { LinkInput } from '../components/LinkInput'
 import { ReadingArea } from '../components/ReadingArea'
-import { DancingCat } from '../components/DancingCat'
+import { DancingCat, MusicStyle } from '../components/DancingCat'
 import { content, reading } from '../api/client'
 import type { CatMood, Content, ReadingResult, Stats, Mistake, ProgressRecord } from '../types'
 import './Home.css'
 
-type View = 'home' | 'reading' | 'dancing' | 'history' | 'mistakes' | 'stats'
+type View = 'home' | 'reading' | 'dancing' | 'history' | 'mistakes' | 'stats' | 'music-select'
 
 export function Home() {
   const { user, profile, accessToken, logout, updateCarrots } = useAuth()
@@ -26,6 +26,7 @@ export function Home() {
   // 统计
   const [stats, setStats] = useState<Stats | null>(null)
   const [mistakes, setMistakes] = useState<Mistake[]>([])
+  const [selectedMusic, setSelectedMusic] = useState<MusicStyle>('disco')
 
   const loadContentList = useCallback(async () => {
     try {
@@ -158,7 +159,12 @@ export function Home() {
       setCatMessage('萝卜不够哦，需要10个🥕')
       return
     }
+    // 先选音乐风格
+    setView('music-select')
+  }, [profile?.carrots])
 
+  const startDance = useCallback(async (style: MusicStyle) => {
+    setSelectedMusic(style)
     try {
       const result = await reading.dance()
       updateCarrots(result.carrotsRemaining)
@@ -167,8 +173,9 @@ export function Home() {
       const message = err instanceof Error ? err.message : 'Unknown error'
       setCatMood('encouraging')
       setCatMessage(message)
+      setView('home')
     }
-  }, [profile?.carrots, updateCarrots])
+  }, [updateCarrots])
 
   const handleDanceComplete = useCallback(() => {
     setView('home')
@@ -193,8 +200,32 @@ export function Home() {
 
   const renderContent = () => {
     switch (view) {
+      case 'music-select':
+        return (
+          <div className="home__music-select">
+            <h2>选择音乐风格 🎵</h2>
+            <div className="home__music-options">
+              <button onClick={() => startDance('disco')} className="home__music-btn">
+                🕺 Disco
+              </button>
+              <button onClick={() => startDance('edm')} className="home__music-btn">
+                🎧 EDM
+              </button>
+              <button onClick={() => startDance('chill')} className="home__music-btn">
+                😌 Chill
+              </button>
+              <button onClick={() => startDance('cute')} className="home__music-btn">
+                🐱 可爱
+              </button>
+            </div>
+            <button onClick={() => setView('home')} className="home__back-btn">
+              ← 返回
+            </button>
+          </div>
+        )
+
       case 'dancing':
-        return <DancingCat onComplete={handleDanceComplete} />
+        return <DancingCat musicStyle={selectedMusic} onComplete={handleDanceComplete} />
 
       case 'reading':
         return currentContent ? (

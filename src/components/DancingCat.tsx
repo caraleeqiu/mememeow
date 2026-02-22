@@ -1,17 +1,40 @@
 import { useState, useEffect, useRef } from 'react'
 import './DancingCat.css'
 
+export type MusicStyle = 'disco' | 'chill' | 'edm' | 'cute'
+
 interface DancingCatProps {
   duration?: number
+  musicStyle?: MusicStyle
   onComplete: () => void
 }
 
-export function DancingCat({ duration = 15, onComplete }: DancingCatProps) {
+const MUSIC_TRACKS: Record<MusicStyle, { url: string; name: string }> = {
+  disco: {
+    url: 'https://cdn.pixabay.com/audio/2022/10/25/audio_946bc3eb44.mp3',
+    name: '🕺 Disco'
+  },
+  chill: {
+    url: 'https://cdn.pixabay.com/audio/2022/05/27/audio_1808fbf07a.mp3',
+    name: '😌 Chill'
+  },
+  edm: {
+    url: 'https://cdn.pixabay.com/audio/2022/03/10/audio_c4b035a6ac.mp3',
+    name: '🎧 EDM'
+  },
+  cute: {
+    url: 'https://cdn.pixabay.com/audio/2021/11/25/audio_91b32e02f9.mp3',
+    name: '🐱 可爱'
+  }
+}
+
+export function DancingCat({ duration = 15, musicStyle = 'disco', onComplete }: DancingCatProps) {
   const [timeLeft, setTimeLeft] = useState(duration)
   const [position, setPosition] = useState({ x: 50, y: 50 })
   const [rotation, setRotation] = useState(0)
   const [scale, setScale] = useState(1)
   const [danceMove, setDanceMove] = useState(0)
+  const [musicPlaying, setMusicPlaying] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const onCompleteRef = useRef(onComplete)
   const isMountedRef = useRef(true)
@@ -22,13 +45,17 @@ export function DancingCat({ duration = 15, onComplete }: DancingCatProps) {
 
   // 播放音乐
   useEffect(() => {
-    // 使用免费音乐 URL
-    audioRef.current = new Audio('https://assets.mixkit.co/music/preview/mixkit-tech-house-vibes-130.mp3')
-    audioRef.current.volume = 0.5
+    const track = MUSIC_TRACKS[musicStyle]
+    audioRef.current = new Audio(track.url)
+    audioRef.current.volume = 0.6
     audioRef.current.loop = true
-    audioRef.current.play().catch(() => {
-      // 自动播放可能被阻止，忽略错误
-    })
+
+    audioRef.current.play()
+      .then(() => setMusicPlaying(true))
+      .catch(() => {
+        // 自动播放可能被阻止
+        setMusicPlaying(false)
+      })
 
     return () => {
       if (audioRef.current) {
@@ -36,7 +63,7 @@ export function DancingCat({ duration = 15, onComplete }: DancingCatProps) {
         audioRef.current = null
       }
     }
-  }, [])
+  }, [musicStyle])
 
   // 随机移动
   useEffect(() => {
@@ -78,13 +105,22 @@ export function DancingCat({ duration = 15, onComplete }: DancingCatProps) {
     }
   }, [])
 
+  // 手动播放音乐（如果自动播放被阻止）
+  const handlePlayMusic = () => {
+    if (audioRef.current && !musicPlaying) {
+      audioRef.current.play()
+        .then(() => setMusicPlaying(true))
+        .catch(() => {})
+    }
+  }
+
   const progressPercentage = (timeLeft / duration) * 100
 
   const danceEmojis = ['💃', '🕺', '🩰', '🎤']
   const currentEmoji = danceEmojis[danceMove]
 
   return (
-    <div className="dancing-cat-fullscreen">
+    <div className="dancing-cat-fullscreen" onClick={handlePlayMusic}>
       {/* 迪斯科背景 */}
       <div className="disco-bg">
         <div className="disco-ball" />
@@ -138,6 +174,10 @@ export function DancingCat({ duration = 15, onComplete }: DancingCatProps) {
       <div className="dancing-cat-ui">
         <div className="dancing-cat-ui__message">
           🎉 萝卜猫正在跳舞！{currentEmoji}
+          {!musicPlaying && <span className="dancing-cat-ui__tap"> (点击播放音乐)</span>}
+        </div>
+        <div className="dancing-cat-ui__music">
+          🎵 {MUSIC_TRACKS[musicStyle].name}
         </div>
         <div className="dancing-cat-ui__timer">
           <span className="dancing-cat-ui__time">{timeLeft}s</span>

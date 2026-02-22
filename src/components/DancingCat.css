@@ -150,6 +150,23 @@
   animation: textPulse 0.5s ease infinite;
 }
 
+.dancing-cat-ui__tap {
+  font-size: 16px;
+  opacity: 0.8;
+  animation: blink 1s ease infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 0.8; }
+  50% { opacity: 0.3; }
+}
+
+.dancing-cat-ui__music {
+  font-size: 18px;
+  color: #4ECDC4;
+  font-weight: bold;
+}
+
 @keyframes textPulse {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.05); }
