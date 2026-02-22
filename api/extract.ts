@@ -6,7 +6,7 @@ import ytdl from '@distube/ytdl-core'
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ''
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || ''
 
-const API_VERSION = 'v8-english-only'
+const API_VERSION = 'v9-timeout-fix'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   console.log('[extract] API Version:', API_VERSION)
@@ -75,9 +75,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'Unsupported platform' })
   } catch (error: any) {
     console.error('Extraction error:', error)
-    const errorMsg = error.name === 'AbortError'
-      ? '请求超时，请稍后重试'
-      : (error.message || 'Extraction failed')
+    let errorMsg = error.message || 'Extraction failed'
+
+    if (error.name === 'AbortError' || errorMsg.includes('timeout') || errorMsg.includes('Timeout')) {
+      errorMsg = '视频处理超时，请尝试较短的视频（30秒以内效果最好）'
+    }
+
     return res.status(500).json({ error: errorMsg })
   }
 }
@@ -440,7 +443,7 @@ If the content IS in English:
         maxOutputTokens: 4096,
       }
     }),
-  }, 60000)
+  }, 45000) // 45秒超时，给 Vercel 留余量
 
   if (!geminiResponse.ok) {
     const errorData = await geminiResponse.text()
