@@ -164,26 +164,38 @@ Rules:
 // Get audio URL using cobalt.tools API
 async function getAudioUrl(videoUrl: string): Promise<string | null> {
   try {
-    // Use cobalt.tools API (free, no auth required)
-    const response = await fetch('https://api.cobalt.tools/api/json', {
+    console.log('[cobalt] Requesting audio for:', videoUrl)
+
+    // Use cobalt.tools API
+    const response = await fetch('https://api.cobalt.tools/', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
+        'User-Agent': 'MeMeMeow/1.0',
       },
       body: JSON.stringify({
         url: videoUrl,
-        isAudioOnly: true,
-        aFormat: 'mp3',
+        downloadMode: 'audio',
+        audioFormat: 'mp3',
       }),
     })
 
+    console.log('[cobalt] Response status:', response.status)
+
     if (!response.ok) {
-      console.error('Cobalt API error:', response.status)
+      const errorText = await response.text()
+      console.error('[cobalt] API error:', response.status, errorText)
       return null
     }
 
     const data = await response.json()
+    console.log('[cobalt] Response data:', JSON.stringify(data).slice(0, 200))
+
+    // Handle different response formats
+    if (data.url) {
+      return data.url
+    }
 
     if (data.status === 'stream' || data.status === 'redirect') {
       return data.url
@@ -193,10 +205,14 @@ async function getAudioUrl(videoUrl: string): Promise<string | null> {
       return data.picker[0].url
     }
 
-    console.error('Cobalt response:', data)
+    if (data.audio) {
+      return data.audio
+    }
+
+    console.error('[cobalt] Unexpected response:', data)
     return null
   } catch (error) {
-    console.error('Failed to get audio URL:', error)
+    console.error('[cobalt] Failed to get audio URL:', error)
     return null
   }
 }
