@@ -6,7 +6,7 @@ import ytdl from '@distube/ytdl-core'
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ''
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || ''
 
-const API_VERSION = 'v12-instagram-fix'
+const API_VERSION = 'v13-debug-instagram'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   console.log('[extract] API Version:', API_VERSION)
@@ -197,17 +197,33 @@ async function extractInstagram(url: string) {
 
     if (rapidResponse.ok) {
       const rapidData = JSON.parse(rapidText)
+      console.log('[instagram] Full response keys:', Object.keys(rapidData))
+
       // 尝试获取视频链接 - 检查多种可能的字段
-      downloadUrl = rapidData.url || rapidData.download_url || rapidData.video_url
+      downloadUrl = rapidData.url || rapidData.download_url || rapidData.video_url || rapidData.video
+
+      // 检查 result 数组
       if (rapidData.result && Array.isArray(rapidData.result)) {
+        console.log('[instagram] result array length:', rapidData.result.length)
         const videoItem = rapidData.result.find((m: any) => m.type === 'video' || m.url?.includes('.mp4'))
         downloadUrl = videoItem?.url || rapidData.result[0]?.url || downloadUrl
       }
+
+      // 检查 media 数组
       if (rapidData.media && Array.isArray(rapidData.media)) {
+        console.log('[instagram] media array length:', rapidData.media.length)
         const videoMedia = rapidData.media.find((m: any) => m.type === 'video')
         downloadUrl = videoMedia?.url || rapidData.media[0]?.url || downloadUrl
       }
+
+      // 检查 data 字段
+      if (rapidData.data) {
+        console.log('[instagram] data field found')
+        downloadUrl = rapidData.data.url || rapidData.data.video_url || rapidData.data.download_url || downloadUrl
+      }
+
       title = rapidData.title || rapidData.caption?.slice(0, 50) || 'Instagram Video'
+      console.log('[instagram] Found download URL:', downloadUrl ? 'yes' : 'no')
     }
 
     // 备用方案：cobalt
@@ -261,50 +277,17 @@ async function extractInstagram(url: string) {
   }
 }
 
-// Extract Twitter/X using RapidAPI + Gemini transcription
+// Extract Twitter/X using cobalt + Gemini transcription
 async function extractTwitter(url: string) {
   console.log('[twitter] Extracting for:', url)
 
   try {
-    // 使用 Twitter downloader API
-    console.log('[twitter] Getting download URL...')
-    const rapidResponse = await fetchWithTimeout(
-      `https://twitter-downloader-download-twitter-videos.p.rapidapi.com/status`,
-      {
-        method: 'POST',
-        headers: {
-          'x-rapidapi-key': RAPIDAPI_KEY,
-          'x-rapidapi-host': 'twitter-downloader-download-twitter-videos.p.rapidapi.com',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ url }),
-      },
-      20000
-    )
-
-    const rapidText = await rapidResponse.text()
-    console.log('[twitter] RapidAPI status:', rapidResponse.status, 'response:', rapidText.slice(0, 300))
-
     let downloadUrl = ''
     let title = 'Twitter Video'
 
-    if (rapidResponse.ok) {
-      const rapidData = JSON.parse(rapidText)
-      // 尝试获取视频链接
-      if (rapidData.media?.video?.videoVariants) {
-        const variants = rapidData.media.video.videoVariants
-        const mp4Variant = variants.find((v: any) => v.content_type === 'video/mp4')
-        downloadUrl = mp4Variant?.url || variants[0]?.url
-      }
-      downloadUrl = downloadUrl || rapidData.download_url || rapidData.video_url || rapidData.url
-      title = rapidData.text?.slice(0, 50) || 'Twitter Video'
-    }
-
-    // 备用方案：cobalt
-    if (!downloadUrl) {
-      console.log('[twitter] Trying cobalt fallback...')
-      downloadUrl = await getAudioUrl(url) || ''
-    }
+    // 使用 cobalt 下载 Twitter 视频
+    console.log('[twitter] Getting download URL via cobalt...')
+    downloadUrl = await getAudioUrl(url) || ''
 
     if (!downloadUrl) {
       throw new Error('无法获取 Twitter 视频，请确保是包含视频的推文')
