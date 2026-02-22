@@ -1,81 +1,114 @@
-# MeMeMeow 🥕
+# MeMeMeow 🥕🐱
 
-英语跟读练习应用 - 通过视频内容学习英语口语
+和萝卜猫一起练英语口语！跟读视频内容，赚萝卜看猫跳舞。
 
-## 功能特性
+## 功能特点
 
-- **视频内容提取**：支持 YouTube、TikTok、Instagram 视频
-- **语音跟读**：使用浏览器语音识别进行跟读练习
-- **智能评分**：自动匹配用户语音和原文
-- **萝卜奖励**：跟读正确获得萝卜，可兑换猫猫跳舞
-- **错题本**：记录错误句子，方便复习
-- **粘贴文字**：直接粘贴英文内容进行练习
-- **上传文件**：支持 .txt, .md 文件
+- 📹 支持 YouTube、TikTok、Instagram 视频内容提取
+- 🎤 实时语音识别跟读练习
+- 🥕 萝卜积分激励系统
+- 💃 集满 10 萝卜看猫跳舞
+- 📝 错题本功能
+- 📊 学习统计
 
 ## 技术栈
 
-- **前端**：React + TypeScript + Vite
-- **后端**：Vercel Serverless Functions
-- **数据库**：Supabase (PostgreSQL)
-- **认证**：Supabase Auth (支持 Google OAuth)
-- **视频处理**：
-  - YouTube: `youtube-transcript` (免费字幕 API)
-  - TikTok: RapidAPI TikTok Downloader + Gemini 转写
-  - Instagram: Cobalt.tools + Gemini 转写
+- **前端**: React 19 + TypeScript + Vite
+- **后端**: Vercel Serverless Functions
+- **数据库**: Supabase (PostgreSQL)
+- **认证**: Supabase Auth (Google OAuth)
+- **语音识别**: Web Speech API
+- **视频转写**: Google Gemini API
 
-## 环境变量
+## 开发设置
 
-### 前端 (.env.local)
+### 1. 克隆项目
+
+```bash
+git clone https://github.com/caraleeqiu/mememeow.git
+cd mememeow
+npm install
 ```
+
+### 2. 配置环境变量
+
+创建 `.env` 文件：
+
+```env
+# Supabase
 VITE_SUPABASE_URL=your_supabase_url
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
-```
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 
-### Vercel 环境变量
-```
+# APIs
 GEMINI_API_KEY=your_gemini_api_key
 RAPIDAPI_KEY=your_rapidapi_key
 ```
 
-## 本地开发
+### 3. 配置 Supabase
+
+在 Supabase SQL Editor 中执行迁移文件：
 
 ```bash
-# 安装依赖
-pnpm install
+# 1. 创建 RPC 函数（原子操作）
+supabase/migrations/001_add_rpc_functions.sql
 
-# 启动开发服务器
-pnpm dev
+# 2. 启用 RLS 策略（安全）
+supabase/migrations/002_add_rls_policies.sql
+```
 
-# 构建生产版本
-pnpm build
+### 4. 启动开发服务器
+
+```bash
+npm run dev
 ```
 
 ## 部署
 
-项目使用 Vercel 部署：
+项目部署在 Vercel：
 
-```bash
-# 手动部署
-npx vercel --prod
+1. 连接 GitHub 仓库到 Vercel
+2. 配置环境变量
+3. 部署
+
+## 项目结构
+
+```
+mememeow/
+├── api/                    # Vercel Serverless Functions
+│   └── extract.ts          # 视频内容提取 API
+├── src/
+│   ├── api/               # API 客户端
+│   │   └── client.ts      # Supabase API 封装
+│   ├── components/        # React 组件
+│   │   ├── CarrotCat.tsx  # 萝卜猫组件
+│   │   ├── DancingCat.tsx # 跳舞动画
+│   │   ├── LinkInput.tsx  # 链接输入
+│   │   └── ReadingArea.tsx # 跟读区域
+│   ├── context/           # React Context
+│   │   └── AuthContext.tsx # 认证上下文
+│   ├── hooks/             # 自定义 Hooks
+│   │   └── useSpeechRecognition.ts
+│   ├── pages/             # 页面组件
+│   │   ├── Home.tsx
+│   │   └── Login.tsx
+│   ├── types/             # TypeScript 类型
+│   └── lib/               # 工具库
+│       └── supabase.ts
+├── supabase/
+│   └── migrations/        # 数据库迁移
+└── vercel.json            # Vercel 配置
 ```
 
-## 数据库结构
+## 匹配算法
 
-详见 `supabase-schema.sql`
+跟读匹配使用改进的算法：
 
-主要表：
-- `profiles` - 用户资料和萝卜数量
-- `contents` - 提取的内容和句子
-- `reading_records` - 跟读记录
-- `mistakes` - 错题本
-- `dance_records` - 跳舞记录
+1. **Levenshtein 距离** - 处理拼写相似的词
+2. **词序敏感** - 位置正确的词获得额外分数
+3. **长度惩罚** - 过长或过短的回答会扣分
+4. **阈值**: 80% 匹配度算通过
 
-## API 端点
-
-- `POST /api/extract` - 提取视频内容
-  - 参数：`{ url: string }`
-  - 返回：`{ title, sentences, platform, type }`
-
-## License
+## 许可
 
 MIT

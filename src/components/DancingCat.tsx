@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import './DancingCat.css'
 
 interface DancingCatProps {
@@ -8,14 +8,27 @@ interface DancingCatProps {
 
 export function DancingCat({ duration = 15, onComplete }: DancingCatProps) {
   const [timeLeft, setTimeLeft] = useState(duration)
+  const onCompleteRef = useRef(onComplete)
+  const isMountedRef = useRef(true)
+
+  // 保持 onComplete 引用最新，但不触发 effect 重新运行
+  useEffect(() => {
+    onCompleteRef.current = onComplete
+  }, [onComplete])
 
   useEffect(() => {
-    // 倒计时
+    isMountedRef.current = true
+
     const timer = setInterval(() => {
       setTimeLeft(t => {
         if (t <= 1) {
           clearInterval(timer)
-          setTimeout(onComplete, 500)
+          // 使用 setTimeout 确保状态更新完成后再调用
+          setTimeout(() => {
+            if (isMountedRef.current) {
+              onCompleteRef.current()
+            }
+          }, 500)
           return 0
         }
         return t - 1
@@ -23,9 +36,12 @@ export function DancingCat({ duration = 15, onComplete }: DancingCatProps) {
     }, 1000)
 
     return () => {
+      isMountedRef.current = false
       clearInterval(timer)
     }
-  }, [onComplete])
+  }, []) // 空依赖，只在挂载时运行
+
+  const progressPercentage = (timeLeft / duration) * 100
 
   return (
     <div className="dancing-cat">
@@ -69,12 +85,12 @@ export function DancingCat({ duration = 15, onComplete }: DancingCatProps) {
         <div className="dancing-cat__timer-bar">
           <div
             className="dancing-cat__timer-fill"
-            style={{ width: `${(timeLeft / duration) * 100}%` }}
+            style={{ width: `${progressPercentage}%` }}
           />
         </div>
       </div>
 
-      <p className="dancing-cat__message">萝卜猫正在跳舞！</p>
+      <p className="dancing-cat__message">萝卜猫正在跳舞!</p>
     </div>
   )
 }

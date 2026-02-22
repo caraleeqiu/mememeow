@@ -105,7 +105,6 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
     }
 
     recognition.onerror = (event) => {
-      console.log('[Speech] Error:', event.error)
       // 忽略 no-speech 错误，继续监听
       if (event.error !== 'no-speech') {
         setIsListening(false)

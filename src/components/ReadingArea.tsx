@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition'
-import type { CatMood, ReadingResult } from '../types'
+import type { CatMood, ReadingResult, ProgressRecord } from '../types'
 import './ReadingArea.css'
 
 interface ReadingAreaProps {
@@ -9,7 +9,7 @@ interface ReadingAreaProps {
   onRecord: (sentenceIndex: number, sentenceText: string, userSpeech: string) => Promise<ReadingResult>
   onMoodChange: (mood: CatMood, message?: string) => void
   onComplete: () => void
-  initialProgress?: { sentence_index: number; is_correct: number }[]
+  initialProgress?: ProgressRecord[]
 }
 
 export function ReadingArea({
@@ -28,6 +28,18 @@ export function ReadingArea({
 
   const { isListening, transcript, toggleListening, stopListening, resetTranscript, isSupported } = useSpeechRecognition()
 
+  // 使用 ref 保持回调函数的最新引用
+  const onMoodChangeRef = useRef(onMoodChange)
+  const onCompleteRef = useRef(onComplete)
+
+  useEffect(() => {
+    onMoodChangeRef.current = onMoodChange
+  }, [onMoodChange])
+
+  useEffect(() => {
+    onCompleteRef.current = onComplete
+  }, [onComplete])
+
   // 初始化进度
   useEffect(() => {
     const completed = new Set(
@@ -44,20 +56,20 @@ export function ReadingArea({
     }
   }, [initialProgress, sentences])
 
+  // 监听状态变化
   useEffect(() => {
     if (isListening) {
-      onMoodChange('listening', '我在听...')
+      onMoodChangeRef.current('listening', '我在听...')
     }
-  }, [isListening, onMoodChange])
+  }, [isListening])
 
-  // 点击按钮切换录音状态
-  const handleToggleRecording = async () => {
+  // 处理录音结束
+  const handleToggleRecording = useCallback(async () => {
     if (isListening) {
-      // 停止录音并处理
       stopListening()
 
       if (!transcript.trim()) {
-        onMoodChange('encouraging', '没听清楚，再说一次？')
+        onMoodChangeRef.current('encouraging', '没听清楚，再说一次？')
         return
       }
 
@@ -75,17 +87,17 @@ export function ReadingArea({
           const newCombo = combo + 1
           setCombo(newCombo)
 
-          let message = '你真棒！'
-          if (newCombo >= 5) message = `${newCombo}连击！太厉害了！`
-          else if (newCombo >= 3) message = `${newCombo}连击！继续保持！`
-          else if (result.carrotsEarned > 0) message = `+${result.carrotsEarned}🥕 你真棒！`
+          let message = '你真棒!'
+          if (newCombo >= 5) message = `${newCombo}连击! 太厉害了!`
+          else if (newCombo >= 3) message = `${newCombo}连击! 继续保持!`
+          else if (result.carrotsEarned > 0) message = `+${result.carrotsEarned}🥕 你真棒!`
 
-          onMoodChange('happy', message)
+          onMoodChangeRef.current('happy', message)
 
           // 检查是否全部完成
           if (newCompleted.size === sentences.length) {
             setTimeout(() => {
-              onComplete()
+              onCompleteRef.current()
             }, 1500)
           } else {
             // 自动跳转到下一句
@@ -93,38 +105,37 @@ export function ReadingArea({
               const nextIncomplete = sentences.findIndex((_, i) => !newCompleted.has(i))
               if (nextIncomplete !== -1) {
                 setCurrentIndex(nextIncomplete)
-                onMoodChange('idle')
+                onMoodChangeRef.current('idle')
               }
             }, 2000)
           }
         } else {
           setCombo(0)
           const attempts = result.attempts
-          let message = '再试一次！'
+          let message = '再试一次!'
           if (attempts >= 3) message = '没关系，慢慢来~'
-          else if (result.score >= 60) message = `差一点点！${result.score}分`
+          else if (result.score >= 60) message = `差一点点! ${result.score}分`
 
-          onMoodChange('encouraging', message)
+          onMoodChangeRef.current('encouraging', message)
         }
-      } catch (error) {
-        onMoodChange('encouraging', '出错了，再试一次？')
+      } catch {
+        onMoodChangeRef.current('encouraging', '出错了，再试一次？')
       } finally {
         setIsProcessing(false)
         resetTranscript()
       }
     } else {
-      // 开始录音
       resetTranscript()
       toggleListening()
     }
-  }
+  }, [isListening, transcript, currentIndex, sentences, completedIndexes, combo, onRecord, stopListening, resetTranscript, toggleListening])
 
-  const goToSentence = (index: number) => {
+  const goToSentence = useCallback((index: number) => {
     setCurrentIndex(index)
     resetTranscript()
     setLastResult(null)
-    onMoodChange('idle')
-  }
+    onMoodChangeRef.current('idle')
+  }, [resetTranscript])
 
   if (!isSupported) {
     return (
@@ -176,7 +187,7 @@ export function ReadingArea({
         <p className="reading-area__sentence-text">{sentences[currentIndex]}</p>
       </div>
 
-      {/* 录音按钮 - 点击开始/结束 */}
+      {/* 录音按钮 */}
       <button
         className={`reading-area__record-btn ${isListening ? 'recording' : ''}`}
         onClick={handleToggleRecording}
@@ -201,7 +212,7 @@ export function ReadingArea({
           {lastResult.isMatch ? (
             <>
               <span className="reading-area__result-icon">✅</span>
-              <span>正确！得分: {lastResult.score}%</span>
+              <span>正确! 得分: {lastResult.score}%</span>
               {lastResult.carrotsEarned > 0 && (
                 <span className="reading-area__result-carrot">+{lastResult.carrotsEarned}🥕</span>
               )}
@@ -209,7 +220,7 @@ export function ReadingArea({
           ) : (
             <>
               <span className="reading-area__result-icon">❌</span>
-              <span>再试试！匹配度: {lastResult.score}%</span>
+              <span>再试试! 匹配度: {lastResult.score}%</span>
             </>
           )}
         </div>

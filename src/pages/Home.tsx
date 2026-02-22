@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { CarrotCat } from '../components/CarrotCat'
 import { LinkInput } from '../components/LinkInput'
 import { ReadingArea } from '../components/ReadingArea'
 import { DancingCat } from '../components/DancingCat'
 import { content, reading } from '../api/client'
-import type { CatMood, Content, ReadingResult, Stats } from '../types'
+import type { CatMood, Content, ReadingResult, Stats, Mistake, ProgressRecord } from '../types'
 import './Home.css'
 
 type View = 'home' | 'reading' | 'dancing' | 'history' | 'mistakes' | 'stats'
@@ -21,45 +21,44 @@ export function Home() {
   // 内容相关
   const [currentContent, setCurrentContent] = useState<Content | null>(null)
   const [contentList, setContentList] = useState<Content[]>([])
-  const [initialProgress, setInitialProgress] = useState<any[]>([])
+  const [initialProgress, setInitialProgress] = useState<ProgressRecord[]>([])
 
   // 统计
   const [stats, setStats] = useState<Stats | null>(null)
-  const [mistakes, setMistakes] = useState<any[]>([])
+  const [mistakes, setMistakes] = useState<Mistake[]>([])
 
-  useEffect(() => {
-    loadContentList()
-  }, [])
-
-  const loadContentList = async () => {
+  const loadContentList = useCallback(async () => {
     try {
       const list = await content.list()
       setContentList(list)
     } catch (err) {
-      console.error('Failed to load content list:', err)
+      // Silent fail for background loading
     }
-  }
+  }, [])
 
-  const loadStats = async () => {
+  useEffect(() => {
+    loadContentList()
+  }, [loadContentList])
+
+  const loadStats = useCallback(async () => {
     try {
       const s = await reading.stats()
       setStats(s)
     } catch (err) {
-      console.error('Failed to load stats:', err)
+      // Silent fail
     }
-  }
+  }, [])
 
-  const loadMistakes = async () => {
+  const loadMistakes = useCallback(async () => {
     try {
       const m = await reading.mistakes()
       setMistakes(m)
     } catch (err) {
-      console.error('Failed to load mistakes:', err)
+      // Silent fail
     }
-  }
+  }, [])
 
-  const handleSubmitUrl = async (url: string) => {
-    console.log('=== handleSubmitUrl called ===', url)
+  const handleSubmitUrl = useCallback(async (url: string) => {
     setIsLoading(true)
     setError('')
     setCatMood('listening')
@@ -69,47 +68,44 @@ export function Home() {
       const result = await content.extract(url, user?.id)
       setCurrentContent(result as Content)
 
-      // 加载进度
       const progress = await reading.progress(result.id)
       setInitialProgress(progress.records)
 
       setView('reading')
       setCatMood('idle')
-      setCatMessage(`共${result.totalSentences}句，开始跟读吧！`)
+      setCatMessage(`共${result.totalSentences}句，开始跟读吧!`)
       loadContentList()
-    } catch (err: any) {
-      setError(err.message)
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Unknown error'
+      setError(message)
       setCatMood('encouraging')
       setCatMessage('提取失败，换个链接试试？')
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [user?.id, loadContentList])
 
-  const handlePasteText = async (title: string, text: string) => {
-    console.log('[Home] handlePasteText called, title:', title, 'text length:', text.length)
+  const handlePasteText = useCallback(async (title: string, text: string) => {
     setIsLoading(true)
     setError('')
 
     try {
-      console.log('[Home] Calling content.paste...')
       const result = await content.paste(title, text)
-      console.log('[Home] content.paste result:', result)
       setCurrentContent(result as Content)
       setInitialProgress([])
       setView('reading')
       setCatMood('idle')
-      setCatMessage(`共${result.totalSentences}句，开始跟读吧！`)
+      setCatMessage(`共${result.totalSentences}句，开始跟读吧!`)
       loadContentList()
-    } catch (err: any) {
-      setError(err.message)
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Unknown error'
+      setError(message)
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [loadContentList])
 
-  
-  const handleRecord = async (
+  const handleRecord = useCallback(async (
     sentenceIndex: number,
     sentenceText: string,
     userSpeech: string
@@ -126,29 +122,29 @@ export function Home() {
     }
 
     return result
-  }
+  }, [currentContent, profile?.carrots, updateCarrots])
 
-  const handleMoodChange = (mood: CatMood, message?: string) => {
+  const handleMoodChange = useCallback((mood: CatMood, message?: string) => {
     setCatMood(mood)
     setCatMessage(message)
-  }
+  }, [])
 
-  const handleReadingComplete = () => {
+  const handleReadingComplete = useCallback(() => {
     setCatMood('happy')
-    setCatMessage('太棒了！你完成了所有句子！')
+    setCatMessage('太棒了! 你完成了所有句子!')
     loadContentList()
-  }
+  }, [loadContentList])
 
-  const handleHighFive = () => {
+  const handleHighFive = useCallback(() => {
     setCatMood('highfive')
-    setCatMessage('耶！击掌成功！')
+    setCatMessage('耶! 击掌成功!')
     setTimeout(() => {
       setCatMood('idle')
       setCatMessage(undefined)
     }, 1500)
-  }
+  }, [])
 
-  const handleDance = async () => {
+  const handleDance = useCallback(async () => {
     if ((profile?.carrots || 0) < 10) {
       setCatMood('encouraging')
       setCatMessage('萝卜不够哦，需要10个🥕')
@@ -159,25 +155,33 @@ export function Home() {
       const result = await reading.dance()
       updateCarrots(result.carrotsRemaining)
       setView('dancing')
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Unknown error'
       setCatMood('encouraging')
-      setCatMessage(err.message)
+      setCatMessage(message)
     }
-  }
+  }, [profile?.carrots, updateCarrots])
 
-  const handleDanceComplete = () => {
+  const handleDanceComplete = useCallback(() => {
     setView('home')
     setCatMood('happy')
-    setCatMessage('跳完啦！好开心～')
-  }
+    setCatMessage('跳完啦! 好开心~')
+  }, [])
 
-  const openContent = async (c: Content) => {
+  const openContent = useCallback(async (c: Content) => {
     setCurrentContent(c)
     const progress = await reading.progress(c.id)
     setInitialProgress(progress.records)
     setView('reading')
     setCatMood('idle')
-  }
+  }, [])
+
+  const handleCancel = useCallback(() => {
+    setIsLoading(false)
+    setError('')
+    setCatMood('idle')
+    setCatMessage(undefined)
+  }, [])
 
   const renderContent = () => {
     switch (view) {
@@ -225,7 +229,7 @@ export function Home() {
                     <div className="home__list-item-content">
                       <div className="home__list-item-title">{c.title}</div>
                       <div className="home__list-item-meta">
-                        {c.platform} · {c.totalSentences}句
+                        {c.platform} · {c.sentences.length}句
                       </div>
                     </div>
                   </div>
@@ -245,7 +249,7 @@ export function Home() {
               <h2>错题本</h2>
             </div>
             {mistakes.length === 0 ? (
-              <p className="home__empty">没有错题，太棒了！</p>
+              <p className="home__empty">没有错题，太棒了!</p>
             ) : (
               <div className="home__list">
                 {mistakes.map(m => (
@@ -310,12 +314,7 @@ export function Home() {
               onPaste={handlePasteText}
               onFile={handlePasteText}
               isLoading={isLoading}
-              onCancel={() => {
-                setIsLoading(false)
-                setError('')
-                setCatMood('idle')
-                setCatMessage(undefined)
-              }}
+              onCancel={handleCancel}
               error={error}
             />
 

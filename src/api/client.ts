@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase'
+import type { Content, ProgressRecord } from '../types'
 
 // Fetch with timeout
 async function fetchWithTimeout(url: string, options: RequestInit = {}, timeout = 15000): Promise<Response> {
@@ -11,8 +12,8 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}, timeout 
       signal: controller.signal,
     })
     return response
-  } catch (error: any) {
-    if (error.name === 'AbortError') {
+  } catch (error: unknown) {
+    if (error instanceof Error && error.name === 'AbortError') {
       throw new Error('Request timeout - please try again')
     }
     throw error
@@ -21,33 +22,141 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}, timeout 
   }
 }
 
-// Content
-export const content = {
-  // 粘贴文本创建内容
-  async paste(title: string, text: string) {
-    console.log('[paste] Starting...')
+// ============================================
+// 改进的匹配算法
+// ============================================
 
+// Levenshtein 距离计算
+function levenshteinDistance(a: string, b: string): number {
+  const matrix: number[][] = []
+
+  for (let i = 0; i <= b.length; i++) {
+    matrix[i] = [i]
+  }
+  for (let j = 0; j <= a.length; j++) {
+    matrix[0][j] = j
+  }
+
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b.charAt(i - 1) === a.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1]
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1, // 替换
+          matrix[i][j - 1] + 1,     // 插入
+          matrix[i - 1][j] + 1      // 删除
+        )
+      }
+    }
+  }
+
+  return matrix[b.length][a.length]
+}
+
+// 词级别相似度（考虑词序）
+function wordSimilarity(original: string[], spoken: string[]): number {
+  if (original.length === 0) return spoken.length === 0 ? 100 : 0
+
+  let matchScore = 0
+  let positionBonus = 0
+  const usedIndexes = new Set<number>()
+
+  for (let i = 0; i < spoken.length; i++) {
+    const spokenWord = spoken[i]
+    let bestMatch = 0
+    let bestIndex = -1
+
+    for (let j = 0; j < original.length; j++) {
+      if (usedIndexes.has(j)) continue
+
+      const originalWord = original[j]
+
+      // 完全匹配
+      if (spokenWord === originalWord) {
+        bestMatch = 1
+        bestIndex = j
+        break
+      }
+
+      // 部分匹配（Levenshtein）
+      const maxLen = Math.max(spokenWord.length, originalWord.length)
+      const distance = levenshteinDistance(spokenWord, originalWord)
+      const similarity = 1 - distance / maxLen
+
+      if (similarity > 0.7 && similarity > bestMatch) {
+        bestMatch = similarity
+        bestIndex = j
+      }
+    }
+
+    if (bestIndex !== -1) {
+      matchScore += bestMatch
+      usedIndexes.add(bestIndex)
+
+      // 位置奖励：相对位置接近的给额外分数
+      const expectedPos = (i / spoken.length) * original.length
+      const positionDiff = Math.abs(bestIndex - expectedPos)
+      const posBonus = Math.max(0, 1 - positionDiff / original.length) * 0.2
+      positionBonus += posBonus * bestMatch
+    }
+  }
+
+  // 基础分数 + 位置奖励，惩罚过长或过短
+  const lengthPenalty = Math.min(spoken.length / original.length, original.length / spoken.length)
+  const baseScore = (matchScore / original.length) * 100
+  const finalScore = baseScore * (0.8 + 0.2 * lengthPenalty) + positionBonus * 10
+
+  return Math.min(100, Math.round(finalScore))
+}
+
+// 标准化文本
+function normalizeText(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^\w\s']/g, '') // 保留撇号（如 don't）
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+// 匹配函数
+function matchSpeech(original: string, spoken: string): { isMatch: boolean; score: number } {
+  const originalNorm = normalizeText(original)
+  const spokenNorm = normalizeText(spoken)
+
+  // 完全匹配
+  if (originalNorm === spokenNorm) {
+    return { isMatch: true, score: 100 }
+  }
+
+  const originalWords = originalNorm.split(' ').filter(w => w.length > 0)
+  const spokenWords = spokenNorm.split(' ').filter(w => w.length > 0)
+
+  const score = wordSimilarity(originalWords, spokenWords)
+  return { isMatch: score >= 80, score }
+}
+
+// ============================================
+// Content API
+// ============================================
+
+export const content = {
+  async paste(title: string, text: string): Promise<Content & { totalSentences: number }> {
     const { data: { session } } = await supabase.auth.getSession()
     const user = session?.user
-    console.log('[paste] Got user from session:', user?.id)
-
     if (!user) throw new Error('Not authenticated')
 
-    // 分割句子 - 更宽松的过滤
     const sentences = text
       .replace(/\s+/g, ' ')
       .split(/(?<=[.!?])\s+/)
       .map((s: string) => s.trim())
-      .filter((s: string) => s.length > 5) // 放宽限制
-      .slice(0, 50) // 最多50句
-
-    console.log('[paste] Sentences:', sentences.length)
+      .filter((s: string) => s.length > 5)
+      .slice(0, 50)
 
     if (sentences.length === 0) {
       throw new Error('No valid sentences found. Make sure the text contains complete sentences.')
     }
 
-    console.log('[paste] Inserting to Supabase...')
     const { data, error } = await supabase
       .from('contents')
       .insert({
@@ -61,8 +170,6 @@ export const content = {
       .select()
       .single()
 
-    console.log('[paste] Insert result:', { data, error })
-
     if (error) throw error
 
     return {
@@ -71,11 +178,7 @@ export const content = {
     }
   },
 
-  // 从 URL 提取内容
-  async extract(url: string, userId?: string) {
-    console.log('[extract] Starting extraction for:', url)
-
-    // 检测平台
+  async extract(url: string, userId?: string): Promise<Content & { totalSentences: number }> {
     const urlLower = url.toLowerCase()
     let platform = 'news'
     let type = 'article'
@@ -92,65 +195,60 @@ export const content = {
     } else if (urlLower.includes('twitter.com') || urlLower.includes('x.com')) {
       platform = 'twitter'
       type = 'video'
-    } else if (urlLower.includes('medium.com')) {
-      platform = 'medium'
     }
 
-    // 只支持视频平台
     if (type !== 'video') {
       throw new Error('目前只支持视频平台（TikTok、YouTube、Instagram、Twitter）。其他内容请使用"粘贴文字"或"上传文件"功能。')
     }
 
-    // 使用服务端 API 提取视频内容
-    try {
-      console.log('[extract] Calling API...')
-      const apiResponse = await fetchWithTimeout('/api/extract', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url }),
-      }, 90000) // 90秒超时
-      console.log('[extract] API response:', apiResponse.status)
+    if (!userId) throw new Error('请先登录')
 
-      if (!apiResponse.ok) {
-        const errorData = await apiResponse.json()
-        throw new Error(errorData.error || 'Video extraction failed')
-      }
+    // 获取 session token 用于 API 认证
+    const { data: { session } } = await supabase.auth.getSession()
+    const token = session?.access_token
 
-      const extracted = await apiResponse.json()
+    const apiResponse = await fetchWithTimeout('/api/extract', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ url }),
+    }, 90000)
 
-      if (!extracted.sentences || extracted.sentences.length === 0) {
-        throw new Error('No text content found in this video')
-      }
+    if (!apiResponse.ok) {
+      const errorData = await apiResponse.json()
+      throw new Error(errorData.error || 'Video extraction failed')
+    }
 
-      // 使用传入的 userId
-      if (!userId) throw new Error('请先登录')
+    const extracted = await apiResponse.json()
 
-      const { data, error } = await supabase
-        .from('contents')
-        .insert({
-          user_id: userId,
-          url,
-          title: extracted.title || 'Video',
-          type: 'video',
-          platform,
-          sentences: extracted.sentences,
-        })
-        .select()
-        .single()
+    if (!extracted.sentences || extracted.sentences.length === 0) {
+      throw new Error('No text content found in this video')
+    }
 
-      if (error) throw error
+    const { data, error } = await supabase
+      .from('contents')
+      .insert({
+        user_id: userId,
+        url,
+        title: extracted.title || 'Video',
+        type: 'video',
+        platform,
+        sentences: extracted.sentences,
+      })
+      .select()
+      .single()
 
-      return {
-        ...data,
-        totalSentences: extracted.sentences.length,
-      }
-    } catch (error: any) {
-      throw new Error(`提取失败: ${error.message}`)
+    if (error) throw error
+
+    return {
+      ...data,
+      totalSentences: extracted.sentences.length,
     }
   },
 
-  // 获取用户所有内容
-  async list() {
+  async list(): Promise<(Content & { totalSentences: number })[]> {
     const { data, error } = await supabase
       .from('contents')
       .select('*')
@@ -158,14 +256,13 @@ export const content = {
 
     if (error) throw error
 
-    return data.map((c: { sentences: string[] }) => ({
+    return (data || []).map((c: Content) => ({
       ...c,
       totalSentences: c.sentences.length,
     }))
   },
 
-  // 获取单个内容
-  async get(id: string) {
+  async get(id: string): Promise<Content> {
     const { data, error } = await supabase
       .from('contents')
       .select('*')
@@ -177,37 +274,18 @@ export const content = {
   },
 }
 
-// Reading
+// ============================================
+// Reading API
+// ============================================
+
 export const reading = {
-  // 记录跟读
   async record(contentId: string, sentenceIndex: number, sentenceText: string, userSpeech: string) {
     const { data: { session } } = await supabase.auth.getSession()
     const user = session?.user
     if (!user) throw new Error('Not authenticated')
 
-    // 匹配算法
-    const normalize = (text: string) =>
-      text.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim()
-
-    const originalNorm = normalize(sentenceText)
-    const spokenNorm = normalize(userSpeech)
-
-    let score = 0
-    let isMatch = false
-
-    if (originalNorm === spokenNorm) {
-      score = 100
-      isMatch = true
-    } else {
-      const originalWords = originalNorm.split(' ')
-      const spokenWords = spokenNorm.split(' ')
-      let matchedWords = 0
-      for (const word of spokenWords) {
-        if (originalWords.includes(word)) matchedWords++
-      }
-      score = Math.round((matchedWords / originalWords.length) * 100)
-      isMatch = score >= 80
-    }
+    // 使用改进的匹配算法
+    const { isMatch, score } = matchSpeech(sentenceText, userSpeech)
 
     // 检查是否已有记录
     const { data: existing } = await supabase
@@ -220,10 +298,10 @@ export const reading = {
 
     let carrotsEarned = 0
     let attempts = 1
+    const wasCorrectBefore = existing?.is_correct
 
     if (existing) {
-      attempts = existing.attempts + 1
-      // 更新记录
+      attempts = (existing.attempts || 0) + 1
       await supabase
         .from('reading_records')
         .update({
@@ -233,12 +311,11 @@ export const reading = {
         })
         .eq('id', existing.id)
 
-      // 如果之前错误现在正确，给萝卜
-      if (isMatch && !existing.is_correct) {
+      // 之前错误现在正确，奖励萝卜
+      if (isMatch && !wasCorrectBefore) {
         carrotsEarned = 1
       }
     } else {
-      // 创建新记录
       await supabase
         .from('reading_records')
         .insert({
@@ -255,19 +332,29 @@ export const reading = {
       }
     }
 
-    // 更新萝卜
+    // 使用原子操作更新萝卜数（修复竞态条件）
     if (carrotsEarned > 0) {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('carrots')
-        .eq('id', user.id)
-        .single()
+      // 方法1: 使用 RPC 函数（需要在 Supabase 中创建）
+      const { error: rpcError } = await supabase.rpc('increment_carrots', {
+        user_id: user.id,
+        amount: carrotsEarned,
+      })
 
-      if (profile) {
-        await supabase
+      // 如果 RPC 不存在，降级到普通更新（不完美但兼容）
+      if (rpcError?.code === '42883') {
+        // Function does not exist - fallback
+        const { data: profile } = await supabase
           .from('profiles')
-          .update({ carrots: profile.carrots + carrotsEarned })
+          .select('carrots')
           .eq('id', user.id)
+          .single()
+
+        if (profile) {
+          await supabase
+            .from('profiles')
+            .update({ carrots: (profile.carrots || 0) + carrotsEarned })
+            .eq('id', user.id)
+        }
       }
     }
 
@@ -275,7 +362,7 @@ export const reading = {
     if (!isMatch && attempts >= 2) {
       const { data: existingMistake } = await supabase
         .from('mistakes')
-        .select('*')
+        .select('id, attempts')
         .eq('user_id', user.id)
         .eq('content_id', contentId)
         .eq('sentence_index', sentenceIndex)
@@ -284,7 +371,7 @@ export const reading = {
       if (existingMistake) {
         await supabase
           .from('mistakes')
-          .update({ attempts: existingMistake.attempts + 1, is_mastered: false })
+          .update({ attempts: (existingMistake.attempts || 0) + 1, is_mastered: false })
           .eq('id', existingMistake.id)
       } else {
         await supabase
@@ -301,7 +388,6 @@ export const reading = {
     return { isMatch, score, carrotsEarned, attempts }
   },
 
-  // 获取内容进度
   async progress(contentId: string) {
     const { data: records, error } = await supabase
       .from('reading_records')
@@ -317,17 +403,17 @@ export const reading = {
       .single()
 
     const totalSentences = contentData?.sentences?.length || 0
-    const completed = records?.filter((r: { is_correct: boolean }) => r.is_correct).length || 0
+    const typedRecords = (records || []) as ProgressRecord[]
+    const completed = typedRecords.filter(r => r.is_correct).length
 
     return {
       completed,
       total: totalSentences,
       percentage: totalSentences > 0 ? Math.round((completed / totalSentences) * 100) : 0,
-      records: records || [],
+      records: typedRecords,
     }
   },
 
-  // 获取错题本
   async mistakes(includeMastered = false) {
     let query = supabase.from('mistakes').select('*').order('created_at', { ascending: false })
 
@@ -340,7 +426,6 @@ export const reading = {
     return data || []
   },
 
-  // 标记错题已掌握
   async masterMistake(id: string) {
     const { error } = await supabase
       .from('mistakes')
@@ -351,50 +436,32 @@ export const reading = {
     return { success: true }
   },
 
-  // 获取统计
   async stats() {
     const { data: { session } } = await supabase.auth.getSession()
     const user = session?.user
     if (!user) throw new Error('Not authenticated')
 
-    const { count: totalReadings } = await supabase
-      .from('reading_records')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', user.id)
+    const [totalRes, correctRes, contentsRes, mistakesRes, danceRes] = await Promise.all([
+      supabase.from('reading_records').select('*', { count: 'exact', head: true }).eq('user_id', user.id),
+      supabase.from('reading_records').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('is_correct', true),
+      supabase.from('contents').select('*', { count: 'exact', head: true }).eq('user_id', user.id),
+      supabase.from('mistakes').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('is_mastered', false),
+      supabase.from('dance_records').select('*', { count: 'exact', head: true }).eq('user_id', user.id),
+    ])
 
-    const { count: correctReadings } = await supabase
-      .from('reading_records')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', user.id)
-      .eq('is_correct', true)
-
-    const { count: totalContents } = await supabase
-      .from('contents')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', user.id)
-
-    const { count: mistakesCount } = await supabase
-      .from('mistakes')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', user.id)
-      .eq('is_mastered', false)
-
-    const { count: danceCount } = await supabase
-      .from('dance_records')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', user.id)
+    const totalReadings = totalRes.count || 0
+    const correctReadings = correctRes.count || 0
 
     return {
-      totalReadings: totalReadings || 0,
-      correctReadings: correctReadings || 0,
-      accuracy: totalReadings ? Math.round(((correctReadings || 0) / totalReadings) * 100) : 0,
-      totalContents: totalContents || 0,
-      mistakesCount: mistakesCount || 0,
-      danceCount: danceCount || 0,
+      totalReadings,
+      correctReadings,
+      accuracy: totalReadings ? Math.round((correctReadings / totalReadings) * 100) : 0,
+      totalContents: contentsRes.count || 0,
+      mistakesCount: mistakesRes.count || 0,
+      danceCount: danceRes.count || 0,
     }
   },
 
-  // 兑换跳舞
   async dance() {
     const { data: { session } } = await supabase.auth.getSession()
     const user = session?.user
@@ -402,33 +469,51 @@ export const reading = {
 
     const DANCE_COST = 10
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('carrots')
-      .eq('id', user.id)
-      .single()
+    // 使用原子操作扣费（修复竞态条件）
+    // 方法1: 使用 RPC 函数
+    const { data: rpcResult, error: rpcError } = await supabase.rpc('redeem_dance', {
+      user_id: user.id,
+      cost: DANCE_COST,
+    })
 
-    if (!profile || profile.carrots < DANCE_COST) {
-      throw new Error(`Not enough carrots. Need ${DANCE_COST}, have ${profile?.carrots || 0}`)
+    // 如果 RPC 存在且成功
+    if (!rpcError && rpcResult !== null) {
+      return {
+        success: true,
+        carrotsRemaining: rpcResult,
+      }
     }
 
-    // 扣除萝卜
-    await supabase
-      .from('profiles')
-      .update({ carrots: profile.carrots - DANCE_COST })
-      .eq('id', user.id)
+    // RPC 不存在时的降级处理
+    if (rpcError?.code === '42883') {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('carrots')
+        .eq('id', user.id)
+        .single()
 
-    // 记录跳舞
-    await supabase
-      .from('dance_records')
-      .insert({
-        user_id: user.id,
-        carrots_spent: DANCE_COST,
-      })
+      if (!profile || profile.carrots < DANCE_COST) {
+        throw new Error(`Not enough carrots. Need ${DANCE_COST}, have ${profile?.carrots || 0}`)
+      }
 
-    return {
-      success: true,
-      carrotsRemaining: profile.carrots - DANCE_COST,
+      await supabase
+        .from('profiles')
+        .update({ carrots: profile.carrots - DANCE_COST })
+        .eq('id', user.id)
+
+      await supabase
+        .from('dance_records')
+        .insert({
+          user_id: user.id,
+          carrots_spent: DANCE_COST,
+        })
+
+      return {
+        success: true,
+        carrotsRemaining: profile.carrots - DANCE_COST,
+      }
     }
+
+    throw rpcError || new Error('Dance redemption failed')
   },
 }
