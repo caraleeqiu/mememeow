@@ -160,24 +160,30 @@ export const content = {
     }
 
     console.log('[paste] Inserting to Supabase, sentences:', sentences.length)
-    const { data, error } = await supabase
-      .from('contents')
-      .insert({
-        user_id: userId,
-        url: 'pasted',
-        title: title || 'Pasted Text',
-        type: 'article',
-        platform: 'paste',
-        sentences,
-      })
-      .select()
-      .single()
+    try {
+      const { data, error } = await supabase
+        .from('contents')
+        .insert({
+          user_id: userId,
+          url: 'pasted',
+          title: title || 'Pasted Text',
+          type: 'article',
+          platform: 'paste',
+          sentences,
+        })
+        .select()
+        .single()
 
-    if (error) throw error
+      console.log('[paste] Insert result:', { data, error })
+      if (error) throw error
 
-    return {
-      ...data,
-      totalSentences: sentences.length,
+      return {
+        ...data,
+        totalSentences: sentences.length,
+      }
+    } catch (insertError) {
+      console.error('[paste] Insert error:', insertError)
+      throw insertError
     }
   },
 
