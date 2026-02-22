@@ -6,7 +6,7 @@ import ytdl from '@distube/ytdl-core'
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ''
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || ''
 
-const API_VERSION = 'v4-debug-logs'
+const API_VERSION = 'v5-rapidapi-info'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   console.log('[extract] API Version:', API_VERSION)
@@ -304,9 +304,10 @@ async function extractYouTubeWithGemini(videoId: string) {
   if (RAPIDAPI_KEY) {
     try {
       console.log('[youtube-gemini] Trying RapidAPI...')
-      // 使用 "Get Direct URL For Download MP4 & MP3" endpoint
-      const rapidResponse = await fetchWithTimeout(
-        `https://youtube-mp3-audio-video-downloader.p.rapidapi.com/dl?id=${videoId}`,
+
+      // Step 1: 获取视频信息
+      const infoResponse = await fetchWithTimeout(
+        `https://youtube-mp3-audio-video-downloader.p.rapidapi.com/info?id=${videoId}`,
         {
           method: 'GET',
           headers: {
@@ -314,25 +315,45 @@ async function extractYouTubeWithGemini(videoId: string) {
             'x-rapidapi-host': 'youtube-mp3-audio-video-downloader.p.rapidapi.com',
           },
         },
-        20000
+        15000
       )
 
-      const rapidText = await rapidResponse.text()
-      console.log('[youtube-gemini] RapidAPI status:', rapidResponse.status, 'response:', rapidText.slice(0, 300))
+      const infoText = await infoResponse.text()
+      console.log('[youtube-gemini] RapidAPI info status:', infoResponse.status, 'response:', infoText.slice(0, 500))
 
-      if (rapidResponse.ok) {
-        const rapidData = JSON.parse(rapidText)
-        // 尝试获取音频链接
-        const audioLink = rapidData.link?.audio || rapidData.audio || rapidData.link || rapidData.url
-        if (audioLink) {
-          title = rapidData.title || 'YouTube Video'
-          console.log('[youtube-gemini] Downloading audio from:', audioLink.slice(0, 100))
-          const audioResponse = await fetchWithTimeout(audioLink, {}, 30000)
+      if (infoResponse.ok) {
+        const infoData = JSON.parse(infoText)
+        title = infoData.title || 'YouTube Video'
+
+        // 尝试找音频链接 - 检查多种可能的字段
+        let audioUrl = ''
+        if (infoData.formats) {
+          // 找音频格式
+          const audioFormat = infoData.formats.find((f: any) =>
+            f.mimeType?.includes('audio') || f.audioQuality
+          )
+          audioUrl = audioFormat?.url || ''
+        }
+        if (!audioUrl && infoData.link) {
+          audioUrl = typeof infoData.link === 'string' ? infoData.link : (infoData.link.audio || infoData.link.mp3)
+        }
+        if (!audioUrl && infoData.audio) {
+          audioUrl = infoData.audio
+        }
+        if (!audioUrl && infoData.downloadUrl) {
+          audioUrl = infoData.downloadUrl
+        }
+
+        if (audioUrl) {
+          console.log('[youtube-gemini] Downloading audio from:', audioUrl.slice(0, 100))
+          const audioResponse = await fetchWithTimeout(audioUrl, {}, 30000)
           if (audioResponse.ok) {
             const audioBuffer = await audioResponse.arrayBuffer()
             audioBase64 = Buffer.from(audioBuffer).toString('base64')
             console.log('[youtube-gemini] RapidAPI success, size:', Math.round(audioBase64.length / 1024), 'KB')
           }
+        } else {
+          console.log('[youtube-gemini] No audio URL found in response')
         }
       }
     } catch (rapidError: any) {
