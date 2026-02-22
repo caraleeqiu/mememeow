@@ -179,13 +179,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const updateCarrots = (carrots: number) => {
     if (profile) {
+      console.log('[updateCarrots] Updating UI:', profile.carrots, '->', carrots)
       setProfile({ ...profile, carrots })
-      // 同步更新到数据库
-      supabase
-        .from('profiles')
-        .update({ carrots })
-        .eq('id', profile.id)
-        .then(() => { /* fire and forget */ })
+      // 注意: 数据库更新由 reading.record() 处理，这里只更新 UI
     }
   }
 
