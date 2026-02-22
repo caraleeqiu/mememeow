@@ -48,7 +48,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (session?.user) {
           setUser(session.user)
           setAccessToken(session.access_token)
-          await loadProfile(session.user.id)
+          await loadProfile(session.user.id, session.access_token)
         } else {
           setUser(null)
           setProfile(null)
@@ -74,7 +74,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(session?.user ?? null)
         setAccessToken(session?.access_token ?? null)
         if (session?.user) {
-          await loadProfile(session.user.id)
+          await loadProfile(session.user.id, session.access_token)
         } else {
           setProfile(null)
           setIsLoading(false)
@@ -88,14 +88,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  const loadProfile = async (userId: string) => {
+  const loadProfile = async (userId: string, token?: string) => {
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
       const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-      // 获取用户的 access token 用于 RLS
-      const { data: { session } } = await supabase.auth.getSession()
-      const accessToken = session?.access_token || supabaseKey
+      // 使用传入的 token，避免再次调用 getSession
+      const authToken = token || supabaseKey
+      console.log('[loadProfile] Loading for userId:', userId, 'token:', authToken ? 'yes' : 'no')
 
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 5000)
@@ -105,7 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         {
           headers: {
             'apikey': supabaseKey,
-            'Authorization': `Bearer ${accessToken}`,
+            'Authorization': `Bearer ${authToken}`,
           },
           signal: controller.signal,
         }
@@ -113,18 +113,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearTimeout(timeoutId)
 
       const data = await response.json()
+      console.log('[loadProfile] Response:', data)
 
       if (data && data.length > 0) {
+        console.log('[loadProfile] Setting profile:', data[0])
         setProfile(data[0])
       } else {
         // Profile 不存在，创建一个
+        console.log('[loadProfile] Profile not found, creating new one')
         const createResponse = await fetch(
           `${supabaseUrl}/rest/v1/profiles`,
           {
             method: 'POST',
             headers: {
               'apikey': supabaseKey,
-              'Authorization': `Bearer ${supabaseKey}`,
+              'Authorization': `Bearer ${authToken}`,
               'Content-Type': 'application/json',
               'Prefer': 'return=representation',
             },
