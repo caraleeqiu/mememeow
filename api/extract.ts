@@ -6,7 +6,7 @@ import ytdl from '@distube/ytdl-core'
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ''
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || ''
 
-const API_VERSION = 'v14-new-instagram-api'
+const API_VERSION = 'v15-instagram-urlencoded'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   console.log('[extract] API Version:', API_VERSION)
@@ -175,12 +175,8 @@ async function extractInstagram(url: string) {
   console.log('[instagram] Extracting for:', url)
 
   try {
-    // 使用 Instagram Video Downloader API (POST with form-data)
+    // 使用 Instagram Video Downloader API (POST with urlencoded)
     console.log('[instagram] Getting download URL...')
-
-    // 构建 form-data
-    const formData = new FormData()
-    formData.append('url', url)
 
     const rapidResponse = await fetchWithTimeout(
       'https://instagram-video-downloader13.p.rapidapi.com/index.php',
@@ -189,26 +185,36 @@ async function extractInstagram(url: string) {
         headers: {
           'x-rapidapi-key': RAPIDAPI_KEY,
           'x-rapidapi-host': 'instagram-video-downloader13.p.rapidapi.com',
+          'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: formData,
+        body: `url=${encodeURIComponent(url)}`,
       },
       20000
     )
 
     const rapidText = await rapidResponse.text()
-    console.log('[instagram] RapidAPI status:', rapidResponse.status, 'response:', rapidText.slice(0, 300))
+    console.log('[instagram] RapidAPI status:', rapidResponse.status, 'response:', rapidText.slice(0, 500))
 
     let downloadUrl = ''
     let title = 'Instagram Video'
 
     if (rapidResponse.ok) {
-      const rapidData = JSON.parse(rapidText)
+      try {
+        const rapidData = JSON.parse(rapidText)
+        console.log('[instagram] Response keys:', Object.keys(rapidData))
 
-      // 检查 status 和 media 数组
-      if (rapidData.status === 'success' && rapidData.media && Array.isArray(rapidData.media)) {
-        const videoMedia = rapidData.media.find((m: any) => m.type === 'video')
-        downloadUrl = videoMedia?.url || rapidData.media[0]?.url || ''
+        // 检查 status 和 media 数组
+        if (rapidData.status === 'success' && rapidData.media && Array.isArray(rapidData.media)) {
+          const videoMedia = rapidData.media.find((m: any) => m.type === 'video')
+          downloadUrl = videoMedia?.url || rapidData.media[0]?.url || ''
+        }
+        // 也检查其他可能的格式
+        if (!downloadUrl) {
+          downloadUrl = rapidData.url || rapidData.video_url || rapidData.download_url || ''
+        }
         console.log('[instagram] Found video URL:', downloadUrl ? 'yes' : 'no')
+      } catch (parseErr) {
+        console.log('[instagram] Failed to parse response:', parseErr)
       }
     }
 
