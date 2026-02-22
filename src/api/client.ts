@@ -174,7 +174,7 @@ export const content = {
 
     if (error) throw error
 
-    return data.map(c => ({
+    return data.map((c: { sentences: string[] }) => ({
       ...c,
       totalSentences: c.sentences.length,
     }))
@@ -332,7 +332,7 @@ export const reading = {
       .single()
 
     const totalSentences = contentData?.sentences?.length || 0
-    const completed = records?.filter(r => r.is_correct).length || 0
+    const completed = records?.filter((r: { is_correct: boolean }) => r.is_correct).length || 0
 
     return {
       completed,

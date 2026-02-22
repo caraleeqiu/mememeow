@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react'
 import type { ReactNode } from 'react'
-import type { User } from '@supabase/supabase-js'
+import type { User, Session, AuthChangeEvent } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 
 interface Profile {
@@ -29,7 +29,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     // 获取当前 session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(({ data: { session } }: { data: { session: Session | null } }) => {
       setUser(session?.user ?? null)
       if (session?.user) {
         loadProfile(session.user.id)
@@ -40,7 +40,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // 监听 auth 状态变化
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+      async (_event: AuthChangeEvent, session: Session | null) => {
         setUser(session?.user ?? null)
         if (session?.user) {
           await loadProfile(session.user.id)
@@ -110,7 +110,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .from('profiles')
         .update({ carrots })
         .eq('id', profile.id)
-        .then(({ error }) => {
+        .then(({ error }: { error: Error | null }) => {
           if (error) console.error('Error updating carrots:', error)
         })
     }
