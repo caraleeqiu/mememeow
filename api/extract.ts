@@ -6,7 +6,7 @@ import ytdl from '@distube/ytdl-core'
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ''
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || ''
 
-const API_VERSION = 'v16-tiktok-youtube-only'
+const API_VERSION = 'v17-instagram-cobalt'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   console.log('[extract] API Version:', API_VERSION)
@@ -54,11 +54,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json(result)
     }
 
-    // Instagram - 暂时禁用，API 不稳定
+    // Instagram - 使用 cobalt
     if (urlLower.includes('instagram.com')) {
-      return res.status(400).json({
-        error: 'Instagram 暂不支持，请使用 TikTok 或 YouTube 链接',
-      })
+      const result = await extractWithCobalt(url, 'instagram')
+      return res.status(200).json(result)
     }
 
     // Twitter/X - 暂时禁用，API 不稳定
@@ -166,7 +165,61 @@ async function extractTikTok(url: string) {
   }
 }
 
-// Extract Instagram using RapidAPI + Gemini transcription
+// Extract using cobalt + Gemini (for Instagram, etc)
+async function extractWithCobalt(url: string, platform: string) {
+  console.log(`[${platform}] Extracting with cobalt:`, url)
+
+  try {
+    // 使用 cobalt 获取下载链接
+    const downloadUrl = await getAudioUrl(url)
+
+    if (!downloadUrl) {
+      throw new Error(`无法获取 ${platform} 视频，请确保链接正确且为公开内容`)
+    }
+
+    // 下载媒体
+    console.log(`[${platform}] Downloading media...`)
+    const mediaResponse = await fetchWithTimeout(downloadUrl, {}, 60000)
+    if (!mediaResponse.ok) {
+      throw new Error('媒体下载失败')
+    }
+
+    const mediaBuffer = await mediaResponse.arrayBuffer()
+    const mediaBase64 = Buffer.from(mediaBuffer).toString('base64')
+    const sizeMB = mediaBase64.length / 1024 / 1024
+    console.log(`[${platform}] Media size:`, sizeMB.toFixed(2), 'MB')
+
+    if (sizeMB > 50) {
+      throw new Error('视频太大，请选择较短的视频')
+    }
+
+    // Gemini 转写
+    console.log(`[${platform}] Transcribing with Gemini...`)
+    const transcription = await transcribeWithGemini(mediaBase64, 'video/mp4')
+
+    const sentences = transcription
+      .split('\n')
+      .map((s: string) => s.trim())
+      .filter((s: string) => s.length >= 10 && s.length <= 200)
+      .slice(0, 50)
+
+    if (sentences.length === 0) {
+      throw new Error('未能提取到有效句子')
+    }
+
+    return {
+      title: `${platform.charAt(0).toUpperCase() + platform.slice(1)} Video`,
+      sentences,
+      platform,
+      type: 'video',
+    }
+  } catch (error: any) {
+    console.error(`[${platform}] Error:`, error.message)
+    throw new Error(`${platform} 提取失败: ${error.message}`)
+  }
+}
+
+// Extract Instagram using RapidAPI + Gemini transcription (backup, not used)
 async function extractInstagram(url: string) {
   console.log('[instagram] Extracting for:', url)
 
