@@ -91,8 +91,8 @@ export function Home() {
     setError('')
 
     try {
-      console.log('[handlePasteText] Calling content.paste...')
-      const result = await content.paste(title, text)
+      console.log('[handlePasteText] Calling content.paste with userId:', user?.id)
+      const result = await content.paste(title, text, user?.id)
       console.log('[handlePasteText] Got result:', result)
       setCurrentContent(result as Content)
       setInitialProgress([])
@@ -106,7 +106,7 @@ export function Home() {
     } finally {
       setIsLoading(false)
     }
-  }, [loadContentList])
+  }, [user?.id, loadContentList])
 
   const handleRecord = useCallback(async (
     sentenceIndex: number,
