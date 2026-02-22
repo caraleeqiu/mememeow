@@ -131,7 +131,7 @@ async function extractTikTok(url: string) {
     // Step 3: 使用 Gemini 转写
     console.log('[tiktok] Step 3: Transcribing with Gemini...')
     const mimeType = isAudio ? 'audio/mpeg' : 'video/mp4'
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`
 
     const geminiResponse = await fetchWithTimeout(geminiUrl, {
       method: 'POST',
@@ -317,7 +317,7 @@ async function extractWithGemini(url: string, platform: string) {
 
   console.log('[extract] Step 3: Sending to Gemini...')
   // Step 3: Send to Gemini for transcription with timeout
-  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`
+  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`
 
   const geminiResponse = await fetchWithTimeout(geminiUrl, {
     method: 'POST',
