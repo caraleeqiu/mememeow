@@ -65,9 +65,48 @@ export const content = {
       platform = 'medium'
     }
 
-    // 对于视频平台，暂时提示用户手动粘贴
+    // 对于视频平台，使用服务端 API 提取
     if (type === 'video') {
-      throw new Error('Video platforms require server-side processing. Please paste the transcript directly for now.')
+      try {
+        const apiResponse = await fetch('/api/extract', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url }),
+        })
+
+        if (!apiResponse.ok) {
+          const errorData = await apiResponse.json()
+          throw new Error(errorData.error || 'Video extraction failed')
+        }
+
+        const extracted = await apiResponse.json()
+
+        if (!extracted.sentences || extracted.sentences.length === 0) {
+          throw new Error('No text content found in this video')
+        }
+
+        const { data, error } = await supabase
+          .from('contents')
+          .insert({
+            user_id: user.id,
+            url,
+            title: extracted.title || 'Video',
+            type: 'video',
+            platform,
+            sentences: extracted.sentences,
+          })
+          .select()
+          .single()
+
+        if (error) throw error
+
+        return {
+          ...data,
+          totalSentences: extracted.sentences.length,
+        }
+      } catch (error: any) {
+        throw new Error(`Video extraction failed: ${error.message}. You can paste the transcript directly using the paste option.`)
+      }
     }
 
     // 使用 CORS 代理获取文章内容
