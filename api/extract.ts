@@ -290,13 +290,18 @@ async function extractYouTube(url: string) {
 // 直接用 Gemini 解析 YouTube 视频
 async function extractYouTubeWithGemini(videoId: string) {
   const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`
-  console.log('[gemini-yt] Processing:', youtubeUrl)
+  console.log('[gemini-yt] Processing YouTube URL:', youtubeUrl)
 
-  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`
+  // 使用 gemini-2.0-flash-exp 支持 YouTube URL
+  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent`
 
+  console.log('[gemini-yt] Calling Gemini API...')
   const response = await fetchWithTimeout(geminiUrl, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': GEMINI_API_KEY
+    },
     body: JSON.stringify({
       contents: [{
         parts: [
@@ -326,10 +331,11 @@ Rules:
     }),
   }, 60000)
 
+  console.log('[gemini-yt] Response status:', response.status)
   if (!response.ok) {
     const errorText = await response.text()
-    console.error('[gemini-yt] Error:', errorText)
-    throw new Error('Gemini 无法处理该视频')
+    console.error('[gemini-yt] Error response:', errorText)
+    throw new Error(`Gemini 无法处理该视频: ${response.status}`)
   }
 
   const data = await response.json()
@@ -545,4 +551,3 @@ async function getAudioUrl(videoUrl: string): Promise<string | null> {
   console.error('[cobalt] All instances failed')
   return null
 }
-// Force redeploy 2026年 2月22日 星期日 19时09分48秒 CST
