@@ -296,8 +296,8 @@ async function extractYouTubeWithGemini(videoId: string) {
   const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`
   console.log('[gemini-yt] Processing YouTube URL:', youtubeUrl)
 
-  // 使用 gemini-2.0-flash-exp 支持 YouTube URL
-  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent`
+  // 使用 gemini-1.5-flash 支持 YouTube URL
+  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent`
 
   console.log('[gemini-yt] Calling Gemini API...')
   const response = await fetchWithTimeout(geminiUrl, {
