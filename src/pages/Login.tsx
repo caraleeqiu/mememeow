@@ -23,10 +23,23 @@ export function Login() {
         await login(email, password)
       } else {
         await register(email, password)
-        setSuccess('注册成功！请查看邮箱点击验证链接（可能在垃圾箱）')
+        setSuccess('🎉 注册成功！请查看邮箱点击验证链接，然后回来登录~')
+        setIsLogin(true) // 切换到登录模式
+        setPassword('') // 清空密码
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'An error occurred')
+      // 转换常见错误为中文
+      let message = err instanceof Error ? err.message : '发生错误'
+      if (message.includes('Invalid login')) {
+        message = '邮箱或密码错误'
+      } else if (message.includes('Email not confirmed')) {
+        message = '请先去邮箱点击验证链接'
+      } else if (message.includes('User already registered')) {
+        message = '该邮箱已注册，请直接登录'
+      } else if (message.includes('Password should be')) {
+        message = '密码至少需要6位'
+      }
+      setError(message)
     } finally {
       setIsLoading(false)
     }
@@ -110,6 +123,7 @@ export function Login() {
         onClick={() => {
           setIsLogin(!isLogin)
           setError('')
+          setSuccess('')
         }}
       >
         {isLogin ? '没有账号？注册一个' : '已有账号？去登录'}
