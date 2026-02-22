@@ -59,6 +59,8 @@ export function Home() {
   }
 
   const handleSubmitUrl = async (url: string) => {
+    console.log('=== handleSubmitUrl called ===', url)
+    alert('开始提取: ' + url) // 临时弹窗确认
     setIsLoading(true)
     setError('')
     setCatMood('listening')
