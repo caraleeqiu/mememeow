@@ -185,6 +185,8 @@ export function ReadingArea({
         {isProcessing ? '处理中...' : isListening ? '🎤 点击结束' : '🎤 点击开始'}
       </button>
 
+      <p className="reading-area__tip">匹配度 ≥80% 得 1🥕 · 集满 10🥕 看猫跳舞</p>
+
       {/* 识别结果 */}
       {transcript && (
         <div className="reading-area__transcript">

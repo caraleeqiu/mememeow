@@ -201,6 +201,13 @@
   font-size: 14px;
 }
 
+.reading-area__tip {
+  text-align: center;
+  font-size: 13px;
+  color: #999;
+  margin: 0;
+}
+
 @keyframes pulse {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.02); }
