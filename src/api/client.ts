@@ -27,8 +27,9 @@ export const content = {
   async paste(title: string, text: string) {
     console.log('[paste] Starting...')
 
-    const { data: { user } } = await supabase.auth.getUser()
-    console.log('[paste] Got user:', user?.id)
+    const { data: { session } } = await supabase.auth.getSession()
+    const user = session?.user
+    console.log('[paste] Got user from session:', user?.id)
 
     if (!user) throw new Error('Not authenticated')
 
@@ -74,23 +75,12 @@ export const content = {
   async extract(url: string) {
     console.log('[extract] Starting extraction for:', url)
 
-    // 添加超时保护
-    const userPromise = supabase.auth.getUser()
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Auth timeout')), 5000)
-    )
+    // 直接从 session 获取用户，避免 getUser() 的 lock 问题
+    const { data: { session } } = await supabase.auth.getSession()
+    const user = session?.user
+    console.log('[extract] Got user from session:', user?.id)
 
-    let user
-    try {
-      const result = await Promise.race([userPromise, timeoutPromise]) as any
-      user = result.data?.user
-      console.log('[extract] Got user:', user?.id)
-    } catch (e) {
-      console.error('[extract] Auth failed:', e)
-      throw new Error('认证超时，请刷新页面重试')
-    }
-
-    if (!user) throw new Error('Not authenticated')
+    if (!user) throw new Error('请先登录')
 
     // 检测平台
     const urlLower = url.toLowerCase()
@@ -195,7 +185,8 @@ export const content = {
 export const reading = {
   // 记录跟读
   async record(contentId: string, sentenceIndex: number, sentenceText: string, userSpeech: string) {
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { session } } = await supabase.auth.getSession()
+    const user = session?.user
     if (!user) throw new Error('Not authenticated')
 
     // 匹配算法
@@ -366,7 +357,8 @@ export const reading = {
 
   // 获取统计
   async stats() {
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { session } } = await supabase.auth.getSession()
+    const user = session?.user
     if (!user) throw new Error('Not authenticated')
 
     const { count: totalReadings } = await supabase
@@ -408,7 +400,8 @@ export const reading = {
 
   // 兑换跳舞
   async dance() {
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { session } } = await supabase.auth.getSession()
+    const user = session?.user
     if (!user) throw new Error('Not authenticated')
 
     const DANCE_COST = 10
