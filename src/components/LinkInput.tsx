@@ -20,8 +20,22 @@ export function LinkInput({ onSubmit, onPaste, onFile, isLoading, onCancel, erro
     const file = e.target.files?.[0]
     if (!file) return
 
-    const text = await file.text()
-    await onFile(file.name.replace(/\.[^/.]+$/, ''), text)
+    const fileName = file.name.replace(/\.[^/.]+$/, '')
+
+    // PDF 文件需要特殊处理
+    if (file.name.toLowerCase().endsWith('.pdf')) {
+      // 转成 base64 发送到后端处理
+      const reader = new FileReader()
+      reader.onload = async () => {
+        const base64 = (reader.result as string).split(',')[1]
+        await onFile(fileName, `__PDF_BASE64__${base64}`)
+      }
+      reader.readAsDataURL(file)
+    } else {
+      // 普通文本文件
+      const text = await file.text()
+      await onFile(fileName, text)
+    }
     e.target.value = ''
   }, [onFile])
 
@@ -75,7 +89,7 @@ export function LinkInput({ onSubmit, onPaste, onFile, isLoading, onCancel, erro
             type="url"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder="粘贴视频链接... YouTube, TikTok, Instagram..."
+            placeholder="粘贴视频链接... YouTube, TikTok, Shorts..."
             className="link-input__field"
             disabled={isLoading}
           />
@@ -121,13 +135,13 @@ export function LinkInput({ onSubmit, onPaste, onFile, isLoading, onCancel, erro
           <label className="link-input__file-label">
             <input
               type="file"
-              accept=".txt,.md"
+              accept=".txt,.md,.pdf"
               onChange={handleFileChange}
               disabled={isLoading}
               className="link-input__file-input"
             />
             <span className="link-input__file-btn">
-              {isLoading ? '处理中...' : '选择文件 (.txt, .md)'}
+              {isLoading ? '处理中...' : '选择文件 (.txt, .md, .pdf)'}
             </span>
           </label>
         </div>
@@ -140,7 +154,7 @@ export function LinkInput({ onSubmit, onPaste, onFile, isLoading, onCancel, erro
       )}
 
       <div className="link-input__supported">
-        支持: YouTube · TikTok · Instagram · Twitter · 仅限英文内容
+        支持: YouTube · TikTok · 仅限英文内容
       </div>
     </div>
   )

@@ -156,6 +156,63 @@ export const content = {
       return englishLetters.length / letters.length > 0.5
     }
 
+    // PDF 文件处理
+    if (text.startsWith('__PDF_BASE64__')) {
+      console.log('[paste] Processing PDF file...')
+      const pdfBase64 = text.replace('__PDF_BASE64__', '')
+
+      // 发送到后端用 Gemini 提取文本
+      const extractResponse = await fetch('/api/extract-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pdfBase64 }),
+      })
+
+      if (!extractResponse.ok) {
+        const errData = await extractResponse.json()
+        throw new Error(errData.error || 'PDF 处理失败')
+      }
+
+      const { sentences: pdfSentences } = await extractResponse.json()
+
+      // 检测提取的文本是否为英文
+      const allText = pdfSentences.join(' ')
+      if (!isEnglishText(allText)) {
+        throw new Error('目前只支持英文哦~')
+      }
+
+      // 保存到数据库
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+      const authToken = token || supabaseKey
+
+      const response = await fetch(`${supabaseUrl}/rest/v1/contents`, {
+        method: 'POST',
+        headers: {
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=representation',
+        },
+        body: JSON.stringify({
+          user_id: userId,
+          url: 'pdf',
+          title: title || 'PDF Document',
+          type: 'article',
+          platform: 'pdf',
+          sentences: pdfSentences,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('保存失败')
+      }
+
+      const data = await response.json()
+      return { ...data[0], totalSentences: pdfSentences.length }
+    }
+
+    // 普通文本处理
     if (!isEnglishText(text)) {
       throw new Error('目前只支持英文哦~')
     }
