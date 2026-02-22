@@ -6,7 +6,7 @@ import ytdl from '@distube/ytdl-core'
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ''
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || ''
 
-const API_VERSION = 'v17-instagram-cobalt'
+const API_VERSION = 'v18-instagram-multipart'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   console.log('[extract] API Version:', API_VERSION)
@@ -54,9 +54,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json(result)
     }
 
-    // Instagram - 使用 cobalt
+    // Instagram - 使用 RapidAPI
     if (urlLower.includes('instagram.com')) {
-      const result = await extractWithCobalt(url, 'instagram')
+      if (!RAPIDAPI_KEY) {
+        return res.status(500).json({ error: 'RapidAPI key not configured' })
+      }
+      const result = await extractInstagramV2(url)
       return res.status(200).json(result)
     }
 
@@ -162,6 +165,97 @@ async function extractTikTok(url: string) {
   } catch (error: any) {
     console.error('[tiktok] Error:', error.message, error.stack)
     throw new Error(`TikTok 提取失败: ${error.message}`)
+  }
+}
+
+// Extract Instagram V2 - 正确的 multipart/form-data
+async function extractInstagramV2(url: string) {
+  console.log('[instagram] Extracting for:', url)
+
+  try {
+    // 构建 multipart/form-data boundary
+    const boundary = '----FormBoundary' + Math.random().toString(36).slice(2)
+    const body = `--${boundary}\r\nContent-Disposition: form-data; name="url"\r\n\r\n${url}\r\n--${boundary}--\r\n`
+
+    console.log('[instagram] Calling RapidAPI...')
+    const rapidResponse = await fetchWithTimeout(
+      'https://instagram-video-downloader13.p.rapidapi.com/index.php',
+      {
+        method: 'POST',
+        headers: {
+          'x-rapidapi-key': RAPIDAPI_KEY,
+          'x-rapidapi-host': 'instagram-video-downloader13.p.rapidapi.com',
+          'Content-Type': `multipart/form-data; boundary=${boundary}`,
+        },
+        body: body,
+      },
+      25000
+    )
+
+    const rapidText = await rapidResponse.text()
+    console.log('[instagram] RapidAPI status:', rapidResponse.status, 'response:', rapidText.slice(0, 500))
+
+    let downloadUrl = ''
+
+    if (rapidResponse.ok) {
+      const rapidData = JSON.parse(rapidText)
+
+      // 响应格式: { status: "success", media: [{ type: "video", url: "..." }] }
+      if (rapidData.status === 'success' && rapidData.media && Array.isArray(rapidData.media)) {
+        const videoMedia = rapidData.media.find((m: any) => m.type === 'video')
+        downloadUrl = videoMedia?.url || rapidData.media[0]?.url || ''
+      }
+    }
+
+    // 备用: cobalt
+    if (!downloadUrl) {
+      console.log('[instagram] RapidAPI failed, trying cobalt...')
+      downloadUrl = await getAudioUrl(url) || ''
+    }
+
+    if (!downloadUrl) {
+      throw new Error('无法获取 Instagram 视频，请确保链接正确且为公开内容')
+    }
+
+    // 下载媒体
+    console.log('[instagram] Downloading media...')
+    const mediaResponse = await fetchWithTimeout(downloadUrl, {}, 60000)
+    if (!mediaResponse.ok) {
+      throw new Error('媒体下载失败')
+    }
+
+    const mediaBuffer = await mediaResponse.arrayBuffer()
+    const mediaBase64 = Buffer.from(mediaBuffer).toString('base64')
+    const sizeMB = mediaBase64.length / 1024 / 1024
+    console.log('[instagram] Media size:', sizeMB.toFixed(2), 'MB')
+
+    if (sizeMB > 50) {
+      throw new Error('视频太大，请选择较短的视频')
+    }
+
+    // Gemini 转写
+    console.log('[instagram] Transcribing with Gemini...')
+    const transcription = await transcribeWithGemini(mediaBase64, 'video/mp4')
+
+    const sentences = transcription
+      .split('\n')
+      .map((s: string) => s.trim())
+      .filter((s: string) => s.length >= 10 && s.length <= 200)
+      .slice(0, 50)
+
+    if (sentences.length === 0) {
+      throw new Error('未能提取到有效句子')
+    }
+
+    return {
+      title: 'Instagram Video',
+      sentences,
+      platform: 'instagram',
+      type: 'video',
+    }
+  } catch (error: any) {
+    console.error('[instagram] Error:', error.message)
+    throw new Error(`Instagram 提取失败: ${error.message}`)
   }
 }
 
