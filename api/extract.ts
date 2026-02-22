@@ -270,8 +270,8 @@ async function extractYouTube(url: string) {
     }
   } catch (error: any) {
     console.error('[youtube] Error:', error)
-    if (error.message.includes('Transcript is disabled')) {
-      throw new Error('该视频禁用了字幕功能')
+    if (error.message.includes('Transcript is disabled') || error.message.includes('disabled')) {
+      throw new Error('该视频没有字幕。请选择有 CC 字幕的视频，或使用"粘贴文字"功能。')
     }
     if (error.message.includes('No transcript')) {
       throw new Error('该视频没有可用的字幕')

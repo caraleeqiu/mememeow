@@ -70,20 +70,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loadProfile = async (userId: string) => {
     console.log('[AuthContext] loadProfile called for:', userId)
+
+    // 超时控制
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Profile query timeout')), 5000)
+    )
+
     try {
-      // 先尝试获取 profile
-      let { data, error } = await supabase
+      // 先尝试获取 profile，带超时
+      const queryPromise = supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
         .maybeSingle()
+
+      const result = await Promise.race([queryPromise, timeoutPromise]) as any
+      let { data, error } = result
 
       console.log('[AuthContext] Profile query result:', data, 'error:', error)
 
       // 如果 profile 不存在，创建一个
       if (!data && !error) {
         console.log('[AuthContext] Profile not found, creating...')
-        const { data: newProfile, error: createError } = await supabase
+        const createPromise = supabase
           .from('profiles')
           .insert({
             id: userId,
@@ -92,10 +101,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .select()
           .single()
 
-        if (createError) {
-          console.error('[AuthContext] Error creating profile:', createError)
+        const createResult = await Promise.race([createPromise, timeoutPromise]) as any
+
+        if (createResult.error) {
+          console.error('[AuthContext] Error creating profile:', createResult.error)
         } else {
-          data = newProfile
+          data = createResult.data
           console.log('[AuthContext] Profile created:', data)
         }
       }
@@ -107,6 +118,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error('[AuthContext] Error loading profile:', error)
+      // 超时或错误时设置默认 profile
+      setProfile({ id: userId, email: '', carrots: 0 })
     } finally {
       setIsLoading(false)
     }
