@@ -376,14 +376,17 @@ export const reading = {
 
     // 更新萝卜数
     if (carrotsEarned > 0) {
+      console.log('[record] Updating carrots, earned:', carrotsEarned)
       const profileRes = await supabaseFetch(`profiles?id=eq.${userId}&select=carrots`)
       const profileData = await profileRes.json()
       const currentCarrots = profileData?.[0]?.carrots || 0
+      console.log('[record] Current carrots:', currentCarrots, '-> new:', currentCarrots + carrotsEarned)
 
-      await supabaseFetch(`profiles?id=eq.${userId}`, {
+      const updateRes = await supabaseFetch(`profiles?id=eq.${userId}`, {
         method: 'PATCH',
         body: JSON.stringify({ carrots: currentCarrots + carrotsEarned }),
       })
+      console.log('[record] Carrot update status:', updateRes.status)
     }
 
     // 错误次数超过2次，加入错题本

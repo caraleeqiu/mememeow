@@ -122,6 +122,7 @@ export function Home() {
     )
 
     if (result.carrotsEarned > 0) {
+      console.log('[handleRecord] Updating UI carrots:', profile?.carrots, '+', result.carrotsEarned)
       updateCarrots((profile?.carrots || 0) + result.carrotsEarned)
     }
 
