@@ -140,7 +140,7 @@ export function LinkInput({ onSubmit, onPaste, onFile, isLoading, onCancel, erro
       )}
 
       <div className="link-input__supported">
-        支持: YouTube · TikTok · Instagram · Twitter
+        支持: YouTube · TikTok · Instagram · Twitter · 仅限英文内容
       </div>
     </div>
   )

@@ -51,7 +51,8 @@ export function Login() {
       </div>
 
       <h1 className="login__title">MeMeMeow</h1>
-      <p className="login__subtitle">和萝卜猫一起学英语</p>
+      <p className="login__subtitle">和萝卜猫一起练英语口语</p>
+      <p className="login__desc">跟读视频内容，赚萝卜看猫跳舞 🥕</p>
 
       {/* Google 登录按钮 */}
       <button
