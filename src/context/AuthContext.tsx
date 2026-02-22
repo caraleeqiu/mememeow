@@ -31,18 +31,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let mounted = true
 
     const init = async () => {
-      console.log('[AuthContext] Initializing...')
-
       try {
-        // 用 Promise.race 加超时保护
-        const sessionPromise = supabase.auth.getSession()
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Session timeout')), 3000)
-        )
-
-        const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise]) as any
-
-        console.log('[AuthContext] Session user:', session?.user?.id)
+        // 直接获取 session，不设超时（OAuth redirect 需要时间处理 URL token）
+        const { data: { session } } = await supabase.auth.getSession()
 
         if (!mounted) return
 
@@ -54,8 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setProfile(null)
           setIsLoading(false)
         }
-      } catch (err) {
-        console.error('[AuthContext] Init error:', err)
+      } catch {
         if (mounted) {
           setIsLoading(false)
         }
@@ -67,7 +57,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // 监听 auth 状态变化
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event: AuthChangeEvent, session: Session | null) => {
-        console.log('[AuthContext] Auth state changed:', _event, session?.user?.id)
         if (!mounted) return
 
         setUser(session?.user ?? null)
@@ -86,9 +75,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const loadProfile = async (userId: string) => {
-    console.log('[AuthContext] loadProfile called for:', userId)
-
-    // 使用 fetch 直接查询，避免 Supabase 客户端问题
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
       const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -113,14 +99,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearTimeout(timeoutId)
 
       const data = await response.json()
-      console.log('[AuthContext] Profile fetch result:', data)
 
       if (data && data.length > 0) {
         setProfile(data[0])
-        console.log('[AuthContext] Profile set with carrots:', data[0].carrots)
       } else {
         // Profile 不存在，创建一个
-        console.log('[AuthContext] Profile not found, creating...')
         const createResponse = await fetch(
           `${supabaseUrl}/rest/v1/profiles`,
           {
@@ -135,15 +118,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         )
         const newProfile = await createResponse.json()
-        console.log('[AuthContext] Profile created:', newProfile)
         if (newProfile && newProfile.length > 0) {
           setProfile(newProfile[0])
         } else {
           setProfile({ id: userId, email: '', carrots: 0 })
         }
       }
-    } catch (error) {
-      console.error('[AuthContext] Error loading profile:', error)
+    } catch {
       setProfile({ id: userId, email: '', carrots: 0 })
     } finally {
       setIsLoading(false)
@@ -190,9 +171,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .from('profiles')
         .update({ carrots })
         .eq('id', profile.id)
-        .then(({ error }: { error: Error | null }) => {
-          if (error) console.error('Error updating carrots:', error)
-        })
+        .then(() => { /* fire and forget */ })
     }
   }
 
