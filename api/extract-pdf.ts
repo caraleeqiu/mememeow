@@ -2,11 +2,38 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ''
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // CORS headers
-  res.setHeader('Access-Control-Allow-Origin', '*')
+// 允许的域名白名单
+const ALLOWED_ORIGINS = [
+  'https://mememeow.vercel.app',
+  'http://localhost:5173',
+  'http://localhost:3000',
+]
+
+// 设置 CORS 头（限制来源）
+function setCorsHeaders(req: VercelRequest, res: VercelResponse): void {
+  const origin = req.headers.origin || ''
+
+  if (ALLOWED_ORIGINS.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin)
+  } else if (process.env.NODE_ENV === 'development') {
+    res.setHeader('Access-Control-Allow-Origin', '*')
+  }
+
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+}
+
+// 验证 Base64 数据
+function isValidBase64(str: string): boolean {
+  if (!str || typeof str !== 'string') return false
+  // 检查是否为有效的 base64 字符
+  const base64Regex = /^[A-Za-z0-9+/]*={0,2}$/
+  return base64Regex.test(str) && str.length > 0
+}
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // 设置 CORS
+  setCorsHeaders(req, res)
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end()
@@ -18,11 +45,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { pdfBase64 } = req.body
 
-  if (!pdfBase64) {
+  // 验证输入
+  if (!pdfBase64 || typeof pdfBase64 !== 'string') {
     return res.status(400).json({ error: 'PDF data is required' })
   }
 
+  if (!isValidBase64(pdfBase64)) {
+    return res.status(400).json({ error: 'Invalid PDF data format' })
+  }
+
+  // 限制文件大小 (20MB base64 约等于 15MB 原文件)
+  const maxSize = 20 * 1024 * 1024
+  if (pdfBase64.length > maxSize) {
+    return res.status(400).json({ error: 'PDF 文件太大，请选择小于 15MB 的文件' })
+  }
+
   if (!GEMINI_API_KEY) {
+    console.error('[extract-pdf] Gemini API key not configured')
     return res.status(500).json({ error: 'Gemini API key not configured' })
   }
 
@@ -32,9 +71,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // 用 Gemini 提取 PDF 文本
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`
 
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 60000) // 60秒超时
+
     const geminiResponse = await fetch(geminiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
       body: JSON.stringify({
         contents: [{
           parts: [
@@ -66,16 +109,17 @@ If there are NO English sentences at all, respond with ONLY: "NO_ENGLISH_FOUND"`
       }),
     })
 
+    clearTimeout(timeoutId)
+
     if (!geminiResponse.ok) {
-      const errorText = await geminiResponse.text()
-      console.error('[extract-pdf] Gemini error:', errorText)
+      console.error('[extract-pdf] Gemini error status:', geminiResponse.status)
       return res.status(500).json({ error: 'PDF 处理失败' })
     }
 
     const geminiData = await geminiResponse.json()
     const text = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || ''
 
-    console.log('[extract-pdf] Gemini response length:', text.length)
+    console.log('[extract-pdf] Extracted text length:', text.length)
 
     // 检查是否没有英文内容
     if (text.trim() === 'NO_ENGLISH_FOUND') {
@@ -96,8 +140,14 @@ If there are NO English sentences at all, respond with ONLY: "NO_ENGLISH_FOUND"`
     console.log('[extract-pdf] Extracted sentences:', sentences.length)
 
     return res.status(200).json({ sentences })
-  } catch (error: any) {
-    console.error('[extract-pdf] Error:', error.message)
-    return res.status(500).json({ error: `PDF 处理失败: ${error.message}` })
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+
+    if (errorMessage.includes('aborted') || errorMessage.includes('AbortError')) {
+      return res.status(500).json({ error: 'PDF 处理超时，请尝试较小的文件' })
+    }
+
+    console.error('[extract-pdf] Error:', errorMessage)
+    return res.status(500).json({ error: 'PDF 处理失败' })
   }
 }
