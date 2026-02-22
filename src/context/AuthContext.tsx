@@ -71,15 +71,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loadProfile = async (userId: string) => {
     console.log('[AuthContext] loadProfile called for:', userId)
     try {
-      const { data, error } = await supabase
+      // 先尝试获取 profile
+      let { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
-        .single()
+        .maybeSingle()
 
-      console.log('[AuthContext] Profile loaded:', data, 'error:', error)
+      console.log('[AuthContext] Profile query result:', data, 'error:', error)
+
+      // 如果 profile 不存在，创建一个
+      if (!data && !error) {
+        console.log('[AuthContext] Profile not found, creating...')
+        const { data: newProfile, error: createError } = await supabase
+          .from('profiles')
+          .insert({
+            id: userId,
+            carrots: 0,
+          })
+          .select()
+          .single()
+
+        if (createError) {
+          console.error('[AuthContext] Error creating profile:', createError)
+        } else {
+          data = newProfile
+          console.log('[AuthContext] Profile created:', data)
+        }
+      }
+
       if (error) throw error
-      setProfile(data)
+      if (data) {
+        setProfile(data)
+        console.log('[AuthContext] Profile set with carrots:', data.carrots)
+      }
     } catch (error) {
       console.error('[AuthContext] Error loading profile:', error)
     } finally {
