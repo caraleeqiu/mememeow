@@ -6,7 +6,7 @@ import ytdl from '@distube/ytdl-core'
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ''
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || ''
 
-const API_VERSION = 'v13-debug-instagram'
+const API_VERSION = 'v14-new-instagram-api'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   console.log('[extract] API Version:', API_VERSION)
@@ -175,16 +175,22 @@ async function extractInstagram(url: string) {
   console.log('[instagram] Extracting for:', url)
 
   try {
-    // 使用 Instagram downloader API (GET /convert?url=...)
+    // 使用 Instagram Video Downloader API (POST with form-data)
     console.log('[instagram] Getting download URL...')
+
+    // 构建 form-data
+    const formData = new FormData()
+    formData.append('url', url)
+
     const rapidResponse = await fetchWithTimeout(
-      `https://instagram-downloader-download-instagram-stories-videos4.p.rapidapi.com/convert?url=${encodeURIComponent(url)}`,
+      'https://instagram-video-downloader13.p.rapidapi.com/index.php',
       {
-        method: 'GET',
+        method: 'POST',
         headers: {
           'x-rapidapi-key': RAPIDAPI_KEY,
-          'x-rapidapi-host': 'instagram-downloader-download-instagram-stories-videos4.p.rapidapi.com',
+          'x-rapidapi-host': 'instagram-video-downloader13.p.rapidapi.com',
         },
+        body: formData,
       },
       20000
     )
@@ -197,33 +203,13 @@ async function extractInstagram(url: string) {
 
     if (rapidResponse.ok) {
       const rapidData = JSON.parse(rapidText)
-      console.log('[instagram] Full response keys:', Object.keys(rapidData))
 
-      // 尝试获取视频链接 - 检查多种可能的字段
-      downloadUrl = rapidData.url || rapidData.download_url || rapidData.video_url || rapidData.video
-
-      // 检查 result 数组
-      if (rapidData.result && Array.isArray(rapidData.result)) {
-        console.log('[instagram] result array length:', rapidData.result.length)
-        const videoItem = rapidData.result.find((m: any) => m.type === 'video' || m.url?.includes('.mp4'))
-        downloadUrl = videoItem?.url || rapidData.result[0]?.url || downloadUrl
-      }
-
-      // 检查 media 数组
-      if (rapidData.media && Array.isArray(rapidData.media)) {
-        console.log('[instagram] media array length:', rapidData.media.length)
+      // 检查 status 和 media 数组
+      if (rapidData.status === 'success' && rapidData.media && Array.isArray(rapidData.media)) {
         const videoMedia = rapidData.media.find((m: any) => m.type === 'video')
-        downloadUrl = videoMedia?.url || rapidData.media[0]?.url || downloadUrl
+        downloadUrl = videoMedia?.url || rapidData.media[0]?.url || ''
+        console.log('[instagram] Found video URL:', downloadUrl ? 'yes' : 'no')
       }
-
-      // 检查 data 字段
-      if (rapidData.data) {
-        console.log('[instagram] data field found')
-        downloadUrl = rapidData.data.url || rapidData.data.video_url || rapidData.data.download_url || downloadUrl
-      }
-
-      title = rapidData.title || rapidData.caption?.slice(0, 50) || 'Instagram Video'
-      console.log('[instagram] Found download URL:', downloadUrl ? 'yes' : 'no')
     }
 
     // 备用方案：cobalt
