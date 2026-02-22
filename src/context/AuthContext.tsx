@@ -12,6 +12,7 @@ interface Profile {
 interface AuthContextType {
   user: User | null
   profile: Profile | null
+  accessToken: string | null
   isLoading: boolean
   login: (email: string, password: string) => Promise<void>
   register: (email: string, password: string) => Promise<void>
@@ -25,6 +26,7 @@ const AuthContext = createContext<AuthContextType | null>(null)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
+  const [accessToken, setAccessToken] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
@@ -45,10 +47,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (session?.user) {
           setUser(session.user)
+          setAccessToken(session.access_token)
           await loadProfile(session.user.id)
         } else {
           setUser(null)
           setProfile(null)
+          setAccessToken(null)
           setIsLoading(false)
         }
       } catch {
@@ -68,6 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!mounted) return
 
         setUser(session?.user ?? null)
+        setAccessToken(session?.access_token ?? null)
         if (session?.user) {
           await loadProfile(session.user.id)
         } else {
@@ -189,6 +194,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       value={{
         user,
         profile,
+        accessToken,
         isLoading,
         login,
         register,

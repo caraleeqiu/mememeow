@@ -11,7 +11,7 @@ import './Home.css'
 type View = 'home' | 'reading' | 'dancing' | 'history' | 'mistakes' | 'stats'
 
 export function Home() {
-  const { user, profile, logout, updateCarrots } = useAuth()
+  const { user, profile, accessToken, logout, updateCarrots } = useAuth()
   const [view, setView] = useState<View>('home')
   const [catMood, setCatMood] = useState<CatMood>('idle')
   const [catMessage, setCatMessage] = useState<string>()
@@ -91,8 +91,8 @@ export function Home() {
     setError('')
 
     try {
-      console.log('[handlePasteText] Calling content.paste with userId:', user?.id)
-      const result = await content.paste(title, text, user?.id)
+      console.log('[handlePasteText] Calling content.paste with userId:', user?.id, 'token:', accessToken ? 'yes' : 'no')
+      const result = await content.paste(title, text, user?.id, accessToken || undefined)
       console.log('[handlePasteText] Got result:', result)
       setCurrentContent(result as Content)
       setInitialProgress([])
@@ -106,7 +106,7 @@ export function Home() {
     } finally {
       setIsLoading(false)
     }
-  }, [user?.id, loadContentList])
+  }, [user?.id, accessToken, loadContentList])
 
   const handleRecord = useCallback(async (
     sentenceIndex: number,
@@ -118,7 +118,8 @@ export function Home() {
       sentenceIndex,
       sentenceText,
       userSpeech,
-      user?.id
+      user?.id,
+      accessToken || undefined
     )
 
     if (result.carrotsEarned > 0) {
@@ -127,7 +128,7 @@ export function Home() {
     }
 
     return result
-  }, [currentContent, user?.id, profile?.carrots, updateCarrots])
+  }, [currentContent, user?.id, accessToken, profile?.carrots, updateCarrots])
 
   const handleMoodChange = useCallback((mood: CatMood, message?: string) => {
     setCatMood(mood)

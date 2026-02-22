@@ -141,8 +141,8 @@ function matchSpeech(original: string, spoken: string): { isMatch: boolean; scor
 // ============================================
 
 export const content = {
-  async paste(title: string, text: string, userId?: string): Promise<Content & { totalSentences: number }> {
-    console.log('[paste] Starting with userId:', userId)
+  async paste(title: string, text: string, userId?: string, token?: string): Promise<Content & { totalSentences: number }> {
+    console.log('[paste] Starting with userId:', userId, 'token:', token ? 'yes' : 'no')
 
     if (!userId) {
       throw new Error('Not authenticated')
@@ -164,6 +164,7 @@ export const content = {
     // 直接用 fetch 绕过 Supabase SDK（避免 SDK 卡住）
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
     const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+    const authToken = token || supabaseKey
 
     console.log('[paste] Using fetch API directly')
 
@@ -171,7 +172,7 @@ export const content = {
       method: 'POST',
       headers: {
         'apikey': supabaseKey,
-        'Authorization': `Bearer ${supabaseKey}`,
+        'Authorization': `Bearer ${authToken}`,
         'Content-Type': 'application/json',
         'Prefer': 'return=representation',
       },
@@ -303,15 +304,16 @@ export const content = {
 // ============================================
 
 // Fetch helper for Supabase REST API
-async function supabaseFetch(path: string, options: RequestInit = {}) {
+async function supabaseFetch(path: string, options: RequestInit = {}, token?: string) {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
   const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+  const authToken = token || supabaseKey
 
   const response = await fetch(`${supabaseUrl}/rest/v1/${path}`, {
     ...options,
     headers: {
       'apikey': supabaseKey,
-      'Authorization': `Bearer ${supabaseKey}`,
+      'Authorization': `Bearer ${authToken}`,
       'Content-Type': 'application/json',
       ...options.headers,
     },
@@ -321,10 +323,10 @@ async function supabaseFetch(path: string, options: RequestInit = {}) {
 }
 
 export const reading = {
-  async record(contentId: string, sentenceIndex: number, sentenceText: string, userSpeech: string, userId?: string) {
+  async record(contentId: string, sentenceIndex: number, sentenceText: string, userSpeech: string, userId?: string, token?: string) {
     if (!userId) throw new Error('Not authenticated')
 
-    console.log('[record] Starting with userId:', userId)
+    console.log('[record] Starting with userId:', userId, 'token:', token ? 'yes' : 'no')
 
     // 使用改进的匹配算法
     const { isMatch, score } = matchSpeech(sentenceText, userSpeech)
@@ -332,7 +334,9 @@ export const reading = {
 
     // 检查是否已有记录
     const existingRes = await supabaseFetch(
-      `reading_records?user_id=eq.${userId}&content_id=eq.${contentId}&sentence_index=eq.${sentenceIndex}&select=*`
+      `reading_records?user_id=eq.${userId}&content_id=eq.${contentId}&sentence_index=eq.${sentenceIndex}&select=*`,
+      {},
+      token
     )
     const existingData = await existingRes.json()
     const existing = existingData?.[0]
@@ -350,7 +354,7 @@ export const reading = {
           is_correct: isMatch,
           attempts,
         }),
-      })
+      }, token)
 
       // 之前错误现在正确，奖励萝卜
       if (isMatch && !wasCorrectBefore) {
@@ -367,7 +371,7 @@ export const reading = {
           user_speech: userSpeech,
           is_correct: isMatch,
         }),
-      })
+      }, token)
 
       if (isMatch) {
         carrotsEarned = 1
@@ -377,7 +381,7 @@ export const reading = {
     // 更新萝卜数
     if (carrotsEarned > 0) {
       console.log('[record] Updating carrots, earned:', carrotsEarned)
-      const profileRes = await supabaseFetch(`profiles?id=eq.${userId}&select=carrots`)
+      const profileRes = await supabaseFetch(`profiles?id=eq.${userId}&select=carrots`, {}, token)
       const profileData = await profileRes.json()
       const currentCarrots = profileData?.[0]?.carrots || 0
       console.log('[record] Current carrots:', currentCarrots, '-> new:', currentCarrots + carrotsEarned)
@@ -385,14 +389,16 @@ export const reading = {
       const updateRes = await supabaseFetch(`profiles?id=eq.${userId}`, {
         method: 'PATCH',
         body: JSON.stringify({ carrots: currentCarrots + carrotsEarned }),
-      })
+      }, token)
       console.log('[record] Carrot update status:', updateRes.status)
     }
 
     // 错误次数超过2次，加入错题本
     if (!isMatch && attempts >= 2) {
       const mistakeRes = await supabaseFetch(
-        `mistakes?user_id=eq.${userId}&content_id=eq.${contentId}&sentence_index=eq.${sentenceIndex}&select=id,attempts`
+        `mistakes?user_id=eq.${userId}&content_id=eq.${contentId}&sentence_index=eq.${sentenceIndex}&select=id,attempts`,
+        {},
+        token
       )
       const mistakeData = await mistakeRes.json()
       const existingMistake = mistakeData?.[0]
@@ -401,7 +407,7 @@ export const reading = {
         await supabaseFetch(`mistakes?id=eq.${existingMistake.id}`, {
           method: 'PATCH',
           body: JSON.stringify({ attempts: (existingMistake.attempts || 0) + 1, is_mastered: false }),
-        })
+        }, token)
       } else {
         await supabaseFetch('mistakes', {
           method: 'POST',
@@ -411,7 +417,7 @@ export const reading = {
             sentence_index: sentenceIndex,
             sentence_text: sentenceText,
           }),
-        })
+        }, token)
       }
     }
 
