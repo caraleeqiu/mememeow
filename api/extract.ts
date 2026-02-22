@@ -1,5 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*')
@@ -20,32 +22,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'URL is required' })
   }
 
+  if (!GEMINI_API_KEY) {
+    return res.status(500).json({ error: 'Gemini API key not configured' })
+  }
+
   try {
     const urlLower = url.toLowerCase()
 
     // TikTok
     if (urlLower.includes('tiktok.com')) {
-      const result = await extractTikTok(url)
+      const result = await extractWithGemini(url, 'tiktok')
       return res.status(200).json(result)
     }
 
     // YouTube
     if (urlLower.includes('youtube.com') || urlLower.includes('youtu.be')) {
-      const result = await extractYouTube(url)
+      const result = await extractWithGemini(url, 'youtube')
       return res.status(200).json(result)
     }
 
     // Instagram
     if (urlLower.includes('instagram.com')) {
-      return res.status(400).json({
-        error: 'Instagram extraction is not yet supported. Please paste the caption/transcript directly.',
-      })
+      const result = await extractWithGemini(url, 'instagram')
+      return res.status(200).json(result)
     }
 
     // Twitter/X
     if (urlLower.includes('twitter.com') || urlLower.includes('x.com')) {
-      const result = await extractTwitter(url)
-      return res.status(200).json(result)
+      return res.status(400).json({
+        error: 'Twitter/X 暂不支持语音转写，请直接粘贴文字内容',
+      })
     }
 
     return res.status(400).json({ error: 'Unsupported platform' })
@@ -55,176 +61,133 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 }
 
-// TikTok extraction using tikwm.com API
-async function extractTikTok(url: string) {
-  // Clean URL - extract video ID
-  const cleanUrl = url.split('?')[0]
+// Extract audio and transcribe using Gemini
+async function extractWithGemini(url: string, platform: string) {
+  // Step 1: Get audio URL using cobalt.tools API
+  const audioUrl = await getAudioUrl(url)
 
-  // Use tikwm.com API (free, no auth required)
-  const apiUrl = `https://www.tikwm.com/api/?url=${encodeURIComponent(cleanUrl)}`
-  const response = await fetch(apiUrl, {
+  if (!audioUrl) {
+    throw new Error('无法获取视频音频，请检查链接是否正确')
+  }
+
+  // Step 2: Download audio
+  const audioResponse = await fetch(audioUrl)
+  if (!audioResponse.ok) {
+    throw new Error('音频下载失败')
+  }
+
+  const audioBuffer = await audioResponse.arrayBuffer()
+  const audioBase64 = Buffer.from(audioBuffer).toString('base64')
+
+  // Check size (Gemini has limits)
+  if (audioBase64.length > 20 * 1024 * 1024) { // ~15MB original
+    throw new Error('视频太长，请选择较短的视频（建议3分钟以内）')
+  }
+
+  // Step 3: Send to Gemini for transcription
+  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`
+
+  const geminiResponse = await fetch(geminiUrl, {
+    method: 'POST',
     headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      'Content-Type': 'application/json',
     },
+    body: JSON.stringify({
+      contents: [{
+        parts: [
+          {
+            text: `Transcribe this audio to English text.
+Rules:
+1. Output ONLY the transcription, no explanations
+2. Split into sentences (one per line)
+3. Fix any grammar or punctuation
+4. If the audio is not in English, translate it to English
+5. Remove filler words like "um", "uh", "like"
+6. Each sentence should be 10-150 characters`
+          },
+          {
+            inline_data: {
+              mime_type: 'audio/mp3',
+              data: audioBase64
+            }
+          }
+        ]
+      }],
+      generationConfig: {
+        temperature: 0.1,
+        maxOutputTokens: 4096,
+      }
+    }),
   })
 
-  const data = await response.json()
-
-  if (data.code !== 0 || !data.data) {
-    throw new Error('Failed to extract TikTok video info')
+  if (!geminiResponse.ok) {
+    const errorData = await geminiResponse.text()
+    console.error('Gemini error:', errorData)
+    throw new Error('Gemini 转写失败，请稍后重试')
   }
 
-  const videoData = data.data
-  const title = videoData.title || 'TikTok Video'
-  const description = videoData.title || ''
+  const geminiData = await geminiResponse.json()
+  const transcription = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || ''
 
-  // TikTok videos usually have short captions, so we'll use the description
-  // and split it into sentences or phrases
-  let sentences: string[] = []
-
-  if (description) {
-    // Split by common sentence endings or line breaks
-    sentences = description
-      .split(/[.!?\n]+/)
-      .map((s: string) => s.trim())
-      .filter((s: string) => s.length > 5)
+  if (!transcription) {
+    throw new Error('无法识别音频内容，可能没有语音')
   }
 
-  // If no good sentences, use the whole description as one
-  if (sentences.length === 0 && description) {
-    sentences = [description.trim()]
-  }
+  // Step 4: Parse sentences
+  const sentences = transcription
+    .split('\n')
+    .map((s: string) => s.trim())
+    .filter((s: string) => s.length >= 10 && s.length <= 200)
+    .slice(0, 50) // Max 50 sentences
 
   if (sentences.length === 0) {
-    throw new Error('No text content found in this TikTok video. The video might not have captions or description.')
+    throw new Error('未能提取到有效句子')
   }
 
   return {
-    title,
+    title: `${platform.charAt(0).toUpperCase() + platform.slice(1)} Video`,
     sentences,
-    platform: 'tiktok',
+    platform,
     type: 'video',
   }
 }
 
-// YouTube extraction using youtube-transcript API
-async function extractYouTube(url: string) {
-  // Extract video ID
-  let videoId = ''
-
-  if (url.includes('youtu.be/')) {
-    videoId = url.split('youtu.be/')[1]?.split('?')[0] || ''
-  } else if (url.includes('youtube.com/watch')) {
-    const urlParams = new URL(url).searchParams
-    videoId = urlParams.get('v') || ''
-  } else if (url.includes('youtube.com/shorts/')) {
-    videoId = url.split('shorts/')[1]?.split('?')[0] || ''
-  }
-
-  if (!videoId) {
-    throw new Error('Could not extract YouTube video ID')
-  }
-
-  // Try to get transcript using a public API
-  // Using youtubetranscript.com API (has rate limits but works for basic use)
+// Get audio URL using cobalt.tools API
+async function getAudioUrl(videoUrl: string): Promise<string | null> {
   try {
-    const transcriptUrl = `https://youtubetranscript.com/?server_vid2=${videoId}`
-    const response = await fetch(transcriptUrl)
-    const html = await response.text()
-
-    // Parse the XML transcript
-    const textMatches = html.match(/<text[^>]*>([^<]+)<\/text>/g)
-
-    if (textMatches && textMatches.length > 0) {
-      const sentences = textMatches
-        .map(match => {
-          const text = match.replace(/<[^>]+>/g, '')
-          return decodeHTMLEntities(text).trim()
-        })
-        .filter(s => s.length > 0)
-
-      // Group into logical sentences (combine short segments)
-      const combinedSentences: string[] = []
-      let current = ''
-
-      for (const s of sentences) {
-        current += (current ? ' ' : '') + s
-        if (current.length > 50 || /[.!?]$/.test(current)) {
-          combinedSentences.push(current)
-          current = ''
-        }
-      }
-      if (current) combinedSentences.push(current)
-
-      if (combinedSentences.length > 0) {
-        return {
-          title: `YouTube Video ${videoId}`,
-          sentences: combinedSentences.slice(0, 50),
-          platform: 'youtube',
-          type: 'video',
-        }
-      }
-    }
-  } catch (e) {
-    console.error('Transcript fetch failed:', e)
-  }
-
-  throw new Error('Could not extract YouTube transcript. The video might not have captions available. Please paste the transcript directly.')
-}
-
-// Twitter/X extraction
-async function extractTwitter(url: string) {
-  // Twitter extraction is tricky without API access
-  // Try using nitter or other mirror services
-  const nitterUrl = url
-    .replace('twitter.com', 'nitter.net')
-    .replace('x.com', 'nitter.net')
-
-  try {
-    const response = await fetch(nitterUrl, {
+    // Use cobalt.tools API (free, no auth required)
+    const response = await fetch('https://api.cobalt.tools/api/json', {
+      method: 'POST',
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
       },
+      body: JSON.stringify({
+        url: videoUrl,
+        isAudioOnly: true,
+        aFormat: 'mp3',
+      }),
     })
-    const html = await response.text()
 
-    // Extract tweet content
-    const contentMatch = html.match(/<div class="tweet-content[^"]*"[^>]*>([^<]+)<\/div>/)
-    if (contentMatch) {
-      const text = decodeHTMLEntities(contentMatch[1]).trim()
-      const sentences = text
-        .split(/[.!?\n]+/)
-        .map((s: string) => s.trim())
-        .filter((s: string) => s.length > 10)
-
-      if (sentences.length > 0) {
-        return {
-          title: 'Tweet',
-          sentences,
-          platform: 'twitter',
-          type: 'article',
-        }
-      }
+    if (!response.ok) {
+      console.error('Cobalt API error:', response.status)
+      return null
     }
-  } catch (e) {
-    console.error('Twitter extraction failed:', e)
+
+    const data = await response.json()
+
+    if (data.status === 'stream' || data.status === 'redirect') {
+      return data.url
+    }
+
+    if (data.status === 'picker' && data.picker?.[0]?.url) {
+      return data.picker[0].url
+    }
+
+    console.error('Cobalt response:', data)
+    return null
+  } catch (error) {
+    console.error('Failed to get audio URL:', error)
+    return null
   }
-
-  throw new Error('Could not extract Twitter content. Please paste the tweet text directly.')
-}
-
-function decodeHTMLEntities(text: string): string {
-  const entities: Record<string, string> = {
-    '&amp;': '&',
-    '&lt;': '<',
-    '&gt;': '>',
-    '&quot;': '"',
-    '&#39;': "'",
-    '&apos;': "'",
-    '&#x27;': "'",
-    '&#x2F;': '/',
-    '&nbsp;': ' ',
-  }
-
-  return text.replace(/&[^;]+;/g, match => entities[match] || match)
 }
