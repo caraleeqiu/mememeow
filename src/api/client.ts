@@ -86,91 +86,39 @@ export const content = {
       platform = 'medium'
     }
 
-    // 对于视频平台，使用服务端 API 提取
-    if (type === 'video') {
-      try {
-        const apiResponse = await fetchWithTimeout('/api/extract', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url }),
-        }, 30000)
-
-        if (!apiResponse.ok) {
-          const errorData = await apiResponse.json()
-          throw new Error(errorData.error || 'Video extraction failed')
-        }
-
-        const extracted = await apiResponse.json()
-
-        if (!extracted.sentences || extracted.sentences.length === 0) {
-          throw new Error('No text content found in this video')
-        }
-
-        const { data, error } = await supabase
-          .from('contents')
-          .insert({
-            user_id: user.id,
-            url,
-            title: extracted.title || 'Video',
-            type: 'video',
-            platform,
-            sentences: extracted.sentences,
-          })
-          .select()
-          .single()
-
-        if (error) throw error
-
-        return {
-          ...data,
-          totalSentences: extracted.sentences.length,
-        }
-      } catch (error: any) {
-        throw new Error(`Video extraction failed: ${error.message}. You can paste the transcript directly using the paste option.`)
-      }
+    // 只支持视频平台
+    if (type !== 'video') {
+      throw new Error('目前只支持视频平台（TikTok、YouTube、Instagram、Twitter）。其他内容请使用"粘贴文字"或"上传文件"功能。')
     }
 
-    // 使用 CORS 代理获取文章内容
+    // 使用服务端 API 提取视频内容
     try {
-      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`
-      const response = await fetchWithTimeout(proxyUrl, {}, 15000)
-      const html = await response.text()
+      const apiResponse = await fetchWithTimeout('/api/extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      }, 30000)
 
-      // 简单提取文本
-      const parser = new DOMParser()
-      const doc = parser.parseFromString(html, 'text/html')
-
-      // 移除 script 和 style
-      doc.querySelectorAll('script, style, nav, header, footer').forEach(el => el.remove())
-
-      // 获取主要内容
-      const article = doc.querySelector('article') || doc.querySelector('main') || doc.body
-      const text = article?.textContent || ''
-
-      // 分割句子
-      const sentences = text
-        .replace(/\s+/g, ' ')
-        .split(/(?<=[.!?])\s+/)
-        .map(s => s.trim())
-        .filter(s => s.length > 20 && s.length < 200)
-        .slice(0, 50) // 最多 50 句
-
-      if (sentences.length === 0) {
-        throw new Error('Could not extract content from this URL')
+      if (!apiResponse.ok) {
+        const errorData = await apiResponse.json()
+        throw new Error(errorData.error || 'Video extraction failed')
       }
 
-      // 获取标题
-      const title = doc.querySelector('title')?.textContent || 'Article'
+      const extracted = await apiResponse.json()
+
+      if (!extracted.sentences || extracted.sentences.length === 0) {
+        throw new Error('No text content found in this video')
+      }
 
       const { data, error } = await supabase
         .from('contents')
         .insert({
           user_id: user.id,
           url,
-          title,
-          type,
+          title: extracted.title || 'Video',
+          type: 'video',
           platform,
-          sentences,
+          sentences: extracted.sentences,
         })
         .select()
         .single()
@@ -179,10 +127,10 @@ export const content = {
 
       return {
         ...data,
-        totalSentences: sentences.length,
+        totalSentences: extracted.sentences.length,
       }
     } catch (error: any) {
-      throw new Error(`Failed to extract content: ${error.message}`)
+      throw new Error(`提取失败: ${error.message}`)
     }
   },
 

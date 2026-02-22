@@ -6,6 +6,37 @@
   gap: 12px;
 }
 
+.link-input__tabs {
+  display: flex;
+  gap: 4px;
+  background: #f5f5f5;
+  padding: 4px;
+  border-radius: 12px;
+}
+
+.link-input__tab {
+  flex: 1;
+  padding: 10px 16px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  color: #666;
+  transition: all 0.2s ease;
+}
+
+.link-input__tab:hover {
+  color: #333;
+}
+
+.link-input__tab--active {
+  background: white;
+  color: #FF6B35;
+  font-weight: bold;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
 .link-input__form {
   display: flex;
   gap: 8px;
@@ -74,19 +105,6 @@
   cursor: not-allowed;
 }
 
-.link-input__toggle {
-  background: none;
-  border: none;
-  color: #888;
-  font-size: 14px;
-  cursor: pointer;
-  padding: 8px;
-}
-
-.link-input__toggle:hover {
-  color: #FF6B35;
-}
-
 .link-input__cancel {
   padding: 14px 20px;
   background: #f5f5f5;
@@ -101,6 +119,35 @@
 .link-input__cancel:hover {
   background: #eee;
   color: #333;
+}
+
+.link-input__file {
+  display: flex;
+  justify-content: center;
+}
+
+.link-input__file-label {
+  cursor: pointer;
+}
+
+.link-input__file-input {
+  display: none;
+}
+
+.link-input__file-btn {
+  display: inline-block;
+  padding: 20px 40px;
+  background: linear-gradient(135deg, #f5f5f5 0%, #eee 100%);
+  border: 3px dashed #ccc;
+  border-radius: 16px;
+  font-size: 16px;
+  color: #666;
+  transition: all 0.2s ease;
+}
+
+.link-input__file-btn:hover {
+  border-color: #FF6B35;
+  color: #FF6B35;
 }
 
 .link-input__error {

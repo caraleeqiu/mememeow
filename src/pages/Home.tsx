@@ -303,6 +303,7 @@ export function Home() {
             <LinkInput
               onSubmit={handleSubmitUrl}
               onPaste={handlePasteText}
+              onFile={handlePasteText}
               isLoading={isLoading}
               onCancel={() => {
                 setIsLoading(false)

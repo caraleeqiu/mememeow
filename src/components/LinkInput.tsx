@@ -4,16 +4,26 @@ import './LinkInput.css'
 interface LinkInputProps {
   onSubmit: (url: string) => Promise<void>
   onPaste: (title: string, text: string) => Promise<void>
+  onFile: (title: string, text: string) => Promise<void>
   isLoading: boolean
   onCancel?: () => void
   error?: string
 }
 
-export function LinkInput({ onSubmit, onPaste, isLoading, onCancel, error }: LinkInputProps) {
+export function LinkInput({ onSubmit, onPaste, onFile, isLoading, onCancel, error }: LinkInputProps) {
   const [url, setUrl] = useState('')
-  const [showPaste, setShowPaste] = useState(false)
+  const [mode, setMode] = useState<'url' | 'paste' | 'file'>('url')
   const [pasteTitle, setPasteTitle] = useState('')
   const [pasteText, setPasteText] = useState('')
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const text = await file.text()
+    await onFile(file.name.replace(/\.[^/.]+$/, ''), text)
+    e.target.value = ''
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -28,18 +38,44 @@ export function LinkInput({ onSubmit, onPaste, isLoading, onCancel, error }: Lin
     await onPaste(pasteTitle.trim(), pasteText.trim())
     setPasteTitle('')
     setPasteText('')
-    setShowPaste(false)
+    setMode('url')
   }
 
   return (
     <div className="link-input">
-      {!showPaste ? (
+      {/* Mode tabs */}
+      <div className="link-input__tabs">
+        <button
+          type="button"
+          className={`link-input__tab ${mode === 'url' ? 'link-input__tab--active' : ''}`}
+          onClick={() => setMode('url')}
+        >
+          链接
+        </button>
+        <button
+          type="button"
+          className={`link-input__tab ${mode === 'paste' ? 'link-input__tab--active' : ''}`}
+          onClick={() => setMode('paste')}
+        >
+          粘贴文字
+        </button>
+        <button
+          type="button"
+          className={`link-input__tab ${mode === 'file' ? 'link-input__tab--active' : ''}`}
+          onClick={() => setMode('file')}
+        >
+          上传文件
+        </button>
+      </div>
+
+      {/* URL mode */}
+      {mode === 'url' && (
         <form onSubmit={handleSubmit} className="link-input__form">
           <input
             type="url"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder="粘贴英文链接... YouTube, Medium, TikTok..."
+            placeholder="粘贴视频链接... YouTube, TikTok, Instagram..."
             className="link-input__field"
             disabled={isLoading}
           />
@@ -52,7 +88,10 @@ export function LinkInput({ onSubmit, onPaste, isLoading, onCancel, error }: Lin
             </button>
           )}
         </form>
-      ) : (
+      )}
+
+      {/* Paste mode */}
+      {mode === 'paste' && (
         <form onSubmit={handlePaste} className="link-input__paste-form">
           <input
             type="text"
@@ -65,7 +104,7 @@ export function LinkInput({ onSubmit, onPaste, isLoading, onCancel, error }: Lin
           <textarea
             value={pasteText}
             onChange={(e) => setPasteText(e.target.value)}
-            placeholder="直接粘贴英文文章内容..."
+            placeholder="直接粘贴英文内容..."
             className="link-input__textarea"
             rows={5}
             disabled={isLoading}
@@ -76,13 +115,23 @@ export function LinkInput({ onSubmit, onPaste, isLoading, onCancel, error }: Lin
         </form>
       )}
 
-      <button
-        type="button"
-        className="link-input__toggle"
-        onClick={() => setShowPaste(!showPaste)}
-      >
-        {showPaste ? '← 输入链接' : '或者直接粘贴文字 →'}
-      </button>
+      {/* File mode */}
+      {mode === 'file' && (
+        <div className="link-input__file">
+          <label className="link-input__file-label">
+            <input
+              type="file"
+              accept=".txt,.md"
+              onChange={handleFileChange}
+              disabled={isLoading}
+              className="link-input__file-input"
+            />
+            <span className="link-input__file-btn">
+              {isLoading ? '处理中...' : '选择文件 (.txt, .md)'}
+            </span>
+          </label>
+        </div>
+      )}
 
       {error && (
         <div className="link-input__error">
@@ -91,7 +140,7 @@ export function LinkInput({ onSubmit, onPaste, isLoading, onCancel, error }: Lin
       )}
 
       <div className="link-input__supported">
-        支持: YouTube · TikTok · Instagram · X · Medium · 新闻网站
+        支持: YouTube · TikTok · Instagram · Twitter
       </div>
     </div>
   )
