@@ -93,6 +93,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
       const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
+      // 获取用户的 access token 用于 RLS
+      const { data: { session } } = await supabase.auth.getSession()
+      const accessToken = session?.access_token || supabaseKey
+
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 5000)
 
@@ -101,7 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         {
           headers: {
             'apikey': supabaseKey,
-            'Authorization': `Bearer ${supabaseKey}`,
+            'Authorization': `Bearer ${accessToken}`,
           },
           signal: controller.signal,
         }

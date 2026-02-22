@@ -206,7 +206,7 @@ Rules:
       type: 'video',
     }
   } catch (error: any) {
-    console.error('[tiktok] Error:', error)
+    console.error('[tiktok] Error:', error.message, error.stack)
     throw new Error(`TikTok 提取失败: ${error.message}`)
   }
 }
