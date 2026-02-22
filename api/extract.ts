@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { YoutubeTranscript } from 'youtube-transcript'
-import ytdl from '@distube/ytdl-core'
+// 使用 serverless 优化版本
+import ytdl from '@ybd-project/ytdl-core/serverless'
 
 // API Keys
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ''
