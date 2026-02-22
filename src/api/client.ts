@@ -342,8 +342,13 @@ export const content = {
     }
   },
 
-  async list(token?: string): Promise<(Content & { totalSentences: number })[]> {
-    const res = await supabaseFetch('contents?select=*&order=created_at.desc', {}, token)
+  async list(userId?: string, token?: string): Promise<(Content & { totalSentences: number })[]> {
+    if (!userId) {
+      return []
+    }
+
+    // 按用户 ID 过滤，只返回当前用户的内容
+    const res = await supabaseFetch(`contents?user_id=eq.${userId}&select=*&order=created_at.desc`, {}, token)
     const data = await res.json()
 
     return (data || []).map((c: Content) => ({
@@ -490,13 +495,19 @@ export const reading = {
     return { isMatch, score, carrotsEarned, attempts }
   },
 
-  async progress(contentId: string) {
+  async progress(contentId: string, userId?: string, token?: string) {
+    if (!userId) {
+      return { completed: 0, total: 0, percentage: 0, records: [] }
+    }
+
     const recordsRes = await supabaseFetch(
-      `reading_records?content_id=eq.${contentId}&select=sentence_index,is_correct,attempts`
+      `reading_records?content_id=eq.${contentId}&user_id=eq.${userId}&select=sentence_index,is_correct,attempts`,
+      {},
+      token
     )
     const records = await recordsRes.json()
 
-    const contentRes = await supabaseFetch(`contents?id=eq.${contentId}&select=sentences`)
+    const contentRes = await supabaseFetch(`contents?id=eq.${contentId}&select=sentences`, {}, token)
     const contentData = await contentRes.json()
 
     const totalSentences = contentData?.[0]?.sentences?.length || 0
@@ -511,8 +522,10 @@ export const reading = {
     }
   },
 
-  async mistakes(includeMastered = false, token?: string) {
-    let path = 'mistakes?select=*&order=created_at.desc'
+  async mistakes(userId?: string, includeMastered = false, token?: string) {
+    if (!userId) return []
+
+    let path = `mistakes?user_id=eq.${userId}&select=*&order=created_at.desc`
     if (!includeMastered) {
       path += '&is_mastered=eq.false'
     }

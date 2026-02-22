@@ -30,13 +30,14 @@ export function Home() {
   const [selectedMusic, setSelectedMusic] = useState<MusicStyle>('disco')
 
   const loadContentList = useCallback(async () => {
+    if (!user?.id) return
     try {
-      const list = await content.list(accessToken || undefined)
+      const list = await content.list(user.id, accessToken || undefined)
       setContentList(list)
     } catch (err) {
       // Silent fail for background loading
     }
-  }, [accessToken])
+  }, [user?.id, accessToken])
 
   useEffect(() => {
     if (accessToken) {
@@ -54,13 +55,14 @@ export function Home() {
   }, [user?.id, accessToken])
 
   const loadMistakes = useCallback(async () => {
+    if (!user?.id) return
     try {
-      const m = await reading.mistakes(false, accessToken || undefined)
+      const m = await reading.mistakes(user.id, false, accessToken || undefined)
       setMistakes(m)
     } catch (err) {
       // Silent fail
     }
-  }, [accessToken])
+  }, [user?.id, accessToken])
 
   const handleSubmitUrl = useCallback(async (url: string) => {
     setIsLoading(true)
@@ -72,7 +74,7 @@ export function Home() {
       const result = await content.extract(url, user?.id)
       setCurrentContent(result as Content)
 
-      const progress = await reading.progress(result.id)
+      const progress = await reading.progress(result.id, user?.id, accessToken || undefined)
       setInitialProgress(progress.records)
 
       setView('reading')
@@ -186,11 +188,11 @@ export function Home() {
 
   const openContent = useCallback(async (c: Content) => {
     setCurrentContent(c)
-    const progress = await reading.progress(c.id)
+    const progress = await reading.progress(c.id, user?.id, accessToken || undefined)
     setInitialProgress(progress.records)
     setView('reading')
     setCatMood('idle')
-  }, [])
+  }, [user?.id, accessToken])
 
   const handleCancel = useCallback(() => {
     setIsLoading(false)
