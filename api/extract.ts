@@ -29,18 +29,19 @@ const ALLOWED_VIDEO_DOMAINS = [
 // 设置 CORS 头（限制来源）
 function setCorsHeaders(req: VercelRequest, res: VercelResponse): boolean {
   const origin = req.headers.origin || ''
+  const isProduction = process.env.VERCEL_ENV === 'production'
 
   if (ALLOWED_ORIGINS.includes(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin)
-  } else if (process.env.NODE_ENV === 'development') {
-    // 开发环境允许所有来源
+  } else if (!isProduction) {
+    // 非生产环境（开发、预览）允许所有来源
     res.setHeader('Access-Control-Allow-Origin', '*')
   }
 
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
 
-  return ALLOWED_ORIGINS.includes(origin) || process.env.NODE_ENV === 'development'
+  return ALLOWED_ORIGINS.includes(origin) || !isProduction
 }
 
 // 验证 URL 格式和域名白名单

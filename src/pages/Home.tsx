@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { CarrotCat } from '../components/CarrotCat'
 import { LinkInput } from '../components/LinkInput'
@@ -6,6 +6,7 @@ import { ReadingArea } from '../components/ReadingArea'
 import { DancingCat } from '../components/DancingCat'
 import type { MusicStyle } from '../components/DancingCat'
 import { content, reading } from '../api/client'
+import { log } from '../lib/logger'
 import type { CatMood, Content, ReadingResult, Stats, Mistake, ProgressRecord } from '../types'
 import './Home.css'
 
@@ -28,6 +29,9 @@ export function Home() {
   const [stats, setStats] = useState<Stats | null>(null)
   const [mistakes, setMistakes] = useState<Mistake[]>([])
   const [selectedMusic, setSelectedMusic] = useState<MusicStyle>('disco')
+
+  // Debounce ref to prevent double submissions
+  const isSubmittingRef = useRef(false)
 
   const loadContentList = useCallback(async () => {
     if (!user?.id) return
@@ -65,6 +69,10 @@ export function Home() {
   }, [user?.id, accessToken])
 
   const handleSubmitUrl = useCallback(async (url: string) => {
+    // Prevent double submission
+    if (isSubmittingRef.current) return
+    isSubmittingRef.current = true
+
     setIsLoading(true)
     setError('')
     setCatMood('listening')
@@ -88,18 +96,22 @@ export function Home() {
       setCatMessage('提取失败，换个链接试试？')
     } finally {
       setIsLoading(false)
+      isSubmittingRef.current = false
     }
-  }, [user?.id, loadContentList])
+  }, [user?.id, loadContentList, accessToken])
 
   const handlePasteText = useCallback(async (title: string, text: string) => {
-    console.log('[handlePasteText] Starting...', { title, text: text.slice(0, 50) })
+    // Prevent double submission
+    if (isSubmittingRef.current) return
+    isSubmittingRef.current = true
+
+    log('handlePasteText', 'Starting', { title: title.slice(0, 20) })
     setIsLoading(true)
     setError('')
 
     try {
-      console.log('[handlePasteText] Calling content.paste with userId:', user?.id, 'token:', accessToken ? 'yes' : 'no')
       const result = await content.paste(title, text, user?.id, accessToken || undefined)
-      console.log('[handlePasteText] Got result:', result)
+      log('handlePasteText', 'Got result', { sentenceCount: result.totalSentences })
       setCurrentContent(result as Content)
       setInitialProgress([])
       setView('reading')
@@ -111,6 +123,7 @@ export function Home() {
       setError(message)
     } finally {
       setIsLoading(false)
+      isSubmittingRef.current = false
     }
   }, [user?.id, accessToken, loadContentList])
 
@@ -129,7 +142,6 @@ export function Home() {
     )
 
     if (result.carrotsEarned > 0) {
-      console.log('[handleRecord] Updating UI carrots:', profile?.carrots, '+', result.carrotsEarned)
       updateCarrots((profile?.carrots || 0) + result.carrotsEarned)
     }
 

@@ -12,15 +12,29 @@ const ALLOWED_ORIGINS = [
 // 设置 CORS 头（限制来源）
 function setCorsHeaders(req: VercelRequest, res: VercelResponse): void {
   const origin = req.headers.origin || ''
+  const isProduction = process.env.VERCEL_ENV === 'production'
 
   if (ALLOWED_ORIGINS.includes(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin)
-  } else if (process.env.NODE_ENV === 'development') {
+  } else if (!isProduction) {
+    // 非生产环境（开发、预览）允许所有来源
     res.setHeader('Access-Control-Allow-Origin', '*')
   }
 
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+}
+
+// 安全日志（生产环境不记录敏感信息）
+function log(tag: string, message: string, data?: Record<string, unknown>) {
+  const isProduction = process.env.VERCEL_ENV === 'production'
+  if (isProduction) return
+
+  const safeData = data ? { ...data } : {}
+  delete safeData.apiKey
+  delete safeData.key
+  delete safeData.token
+  console.log(`[${tag}] ${message}`, Object.keys(safeData).length > 0 ? JSON.stringify(safeData) : '')
 }
 
 // 验证 Base64 数据
@@ -61,12 +75,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (!GEMINI_API_KEY) {
-    console.error('[extract-pdf] Gemini API key not configured')
+    log('extract-pdf', 'Gemini API key not configured')
     return res.status(500).json({ error: 'Gemini API key not configured' })
   }
 
   try {
-    console.log('[extract-pdf] Processing PDF, size:', Math.round(pdfBase64.length / 1024), 'KB')
+    log('extract-pdf', 'Processing PDF', { sizeKB: Math.round(pdfBase64.length / 1024) })
 
     // 用 Gemini 提取 PDF 文本
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`
@@ -112,14 +126,14 @@ If there are NO English sentences at all, respond with ONLY: "NO_ENGLISH_FOUND"`
     clearTimeout(timeoutId)
 
     if (!geminiResponse.ok) {
-      console.error('[extract-pdf] Gemini error status:', geminiResponse.status)
+      log('extract-pdf', 'Gemini error', { status: geminiResponse.status })
       return res.status(500).json({ error: 'PDF 处理失败' })
     }
 
     const geminiData = await geminiResponse.json()
     const text = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || ''
 
-    console.log('[extract-pdf] Extracted text length:', text.length)
+    log('extract-pdf', 'Extracted text', { length: text.length })
 
     // 检查是否没有英文内容
     if (text.trim() === 'NO_ENGLISH_FOUND') {
@@ -137,7 +151,7 @@ If there are NO English sentences at all, respond with ONLY: "NO_ENGLISH_FOUND"`
       return res.status(400).json({ error: '未能从 PDF 中提取到有效句子' })
     }
 
-    console.log('[extract-pdf] Extracted sentences:', sentences.length)
+    log('extract-pdf', 'Extracted sentences', { count: sentences.length })
 
     return res.status(200).json({ sentences })
   } catch (error: unknown) {
@@ -147,7 +161,7 @@ If there are NO English sentences at all, respond with ONLY: "NO_ENGLISH_FOUND"`
       return res.status(500).json({ error: 'PDF 处理超时，请尝试较小的文件' })
     }
 
-    console.error('[extract-pdf] Error:', errorMessage)
+    log('extract-pdf', 'Error', { error: errorMessage })
     return res.status(500).json({ error: 'PDF 处理失败' })
   }
 }

@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase'
+import { log, logError } from '../lib/logger'
 import type { Content, ProgressRecord } from '../types'
 
 // Fetch with timeout
@@ -142,7 +143,7 @@ function matchSpeech(original: string, spoken: string): { isMatch: boolean; scor
 
 export const content = {
   async paste(title: string, text: string, userId?: string, token?: string): Promise<Content & { totalSentences: number }> {
-    console.log('[paste] Starting with userId:', userId, 'token:', token ? 'yes' : 'no')
+    log('paste', 'Starting', { userId, hasToken: !!token })
 
     if (!userId) {
       throw new Error('Not authenticated')
@@ -158,7 +159,7 @@ export const content = {
 
     // PDF 文件处理
     if (text.startsWith('__PDF_BASE64__')) {
-      console.log('[paste] Processing PDF file...')
+      log('paste', 'Processing PDF file')
       const pdfBase64 = text.replace('__PDF_BASE64__', '')
 
       // 发送到后端用 Gemini 提取文本
@@ -228,14 +229,12 @@ export const content = {
       throw new Error('没有找到有效句子，请确保文本包含完整的英文句子（以.!?结尾）')
     }
 
-    console.log('[paste] Inserting to Supabase, sentences:', sentences.length)
+    log('paste', 'Inserting to Supabase', { sentenceCount: sentences.length })
 
     // 直接用 fetch 绕过 Supabase SDK（避免 SDK 卡住）
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
     const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
     const authToken = token || supabaseKey
-
-    console.log('[paste] Using fetch API directly')
 
     const response = await fetch(`${supabaseUrl}/rest/v1/contents`, {
       method: 'POST',
@@ -255,16 +254,16 @@ export const content = {
       }),
     })
 
-    console.log('[paste] Fetch response status:', response.status)
+    log('paste', 'Fetch response', { status: response.status })
 
     if (!response.ok) {
       const errorText = await response.text()
-      console.error('[paste] Fetch error:', errorText)
+      logError('paste', 'Fetch error', new Error(errorText))
       throw new Error(`Insert failed: ${errorText}`)
     }
 
     const data = await response.json()
-    console.log('[paste] Insert success:', data)
+    log('paste', 'Insert success')
 
     return {
       ...data[0],
@@ -396,11 +395,11 @@ export const reading = {
   async record(contentId: string, sentenceIndex: number, sentenceText: string, userSpeech: string, userId?: string, token?: string) {
     if (!userId) throw new Error('Not authenticated')
 
-    console.log('[record] Starting with userId:', userId, 'token:', token ? 'yes' : 'no')
+    log('record', 'Starting', { sentenceIndex, hasToken: !!token })
 
     // 使用改进的匹配算法
     const { isMatch, score } = matchSpeech(sentenceText, userSpeech)
-    console.log('[record] Match result:', { isMatch, score })
+    log('record', 'Match result', { isMatch, score })
 
     // 检查是否已有记录
     const existingRes = await supabaseFetch(
@@ -450,17 +449,16 @@ export const reading = {
 
     // 更新萝卜数
     if (carrotsEarned > 0) {
-      console.log('[record] Updating carrots, earned:', carrotsEarned)
+      log('record', 'Updating carrots', { earned: carrotsEarned })
       const profileRes = await supabaseFetch(`profiles?id=eq.${userId}&select=carrots`, {}, token)
       const profileData = await profileRes.json()
       const currentCarrots = profileData?.[0]?.carrots || 0
-      console.log('[record] Current carrots:', currentCarrots, '-> new:', currentCarrots + carrotsEarned)
+      log('record', 'Carrot update', { from: currentCarrots, to: currentCarrots + carrotsEarned })
 
-      const updateRes = await supabaseFetch(`profiles?id=eq.${userId}`, {
+      await supabaseFetch(`profiles?id=eq.${userId}`, {
         method: 'PATCH',
         body: JSON.stringify({ carrots: currentCarrots + carrotsEarned }),
       }, token)
-      console.log('[record] Carrot update status:', updateRes.status)
     }
 
     // 错误次数超过2次，加入错题本
@@ -491,7 +489,7 @@ export const reading = {
       }
     }
 
-    console.log('[record] Done:', { isMatch, score, carrotsEarned, attempts })
+    log('record', 'Done', { isMatch, score, carrotsEarned, attempts })
     return { isMatch, score, carrotsEarned, attempts }
   },
 
