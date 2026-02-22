@@ -5,7 +5,11 @@ import { YoutubeTranscript } from 'youtube-transcript'
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ''
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || ''
 
+const API_VERSION = 'v3-gemini-direct'
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  console.log('[extract] API Version:', API_VERSION)
+
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
@@ -16,7 +20,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' })
+    return res.status(405).json({ error: 'Method not allowed', version: API_VERSION })
   }
 
   const { url } = req.body
