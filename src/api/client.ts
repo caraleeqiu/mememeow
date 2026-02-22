@@ -273,13 +273,9 @@ export const content = {
     }
   },
 
-  async list(): Promise<(Content & { totalSentences: number })[]> {
-    const { data, error } = await supabase
-      .from('contents')
-      .select('*')
-      .order('created_at', { ascending: false })
-
-    if (error) throw error
+  async list(token?: string): Promise<(Content & { totalSentences: number })[]> {
+    const res = await supabaseFetch('contents?select=*&order=created_at.desc', {}, token)
+    const data = await res.json()
 
     return (data || []).map((c: Content) => ({
       ...c,
@@ -446,15 +442,14 @@ export const reading = {
     }
   },
 
-  async mistakes(includeMastered = false) {
-    let query = supabase.from('mistakes').select('*').order('created_at', { ascending: false })
-
+  async mistakes(includeMastered = false, token?: string) {
+    let path = 'mistakes?select=*&order=created_at.desc'
     if (!includeMastered) {
-      query = query.eq('is_mastered', false)
+      path += '&is_mastered=eq.false'
     }
 
-    const { data, error } = await query
-    if (error) throw error
+    const res = await supabaseFetch(path, {}, token)
+    const data = await res.json()
     return data || []
   },
 
@@ -468,29 +463,40 @@ export const reading = {
     return { success: true }
   },
 
-  async stats() {
-    const { data: { session } } = await supabase.auth.getSession()
-    const user = session?.user
-    if (!user) throw new Error('Not authenticated')
+  async stats(userId?: string, token?: string) {
+    if (!userId) throw new Error('Not authenticated')
+
+    // 使用 Prefer: count=exact 获取计数
+    const headers = { 'Prefer': 'count=exact' }
 
     const [totalRes, correctRes, contentsRes, mistakesRes, danceRes] = await Promise.all([
-      supabase.from('reading_records').select('*', { count: 'exact', head: true }).eq('user_id', user.id),
-      supabase.from('reading_records').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('is_correct', true),
-      supabase.from('contents').select('*', { count: 'exact', head: true }).eq('user_id', user.id),
-      supabase.from('mistakes').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('is_mastered', false),
-      supabase.from('dance_records').select('*', { count: 'exact', head: true }).eq('user_id', user.id),
+      supabaseFetch(`reading_records?user_id=eq.${userId}&select=id`, { headers }, token),
+      supabaseFetch(`reading_records?user_id=eq.${userId}&is_correct=eq.true&select=id`, { headers }, token),
+      supabaseFetch(`contents?user_id=eq.${userId}&select=id`, { headers }, token),
+      supabaseFetch(`mistakes?user_id=eq.${userId}&is_mastered=eq.false&select=id`, { headers }, token),
+      supabaseFetch(`dance_records?user_id=eq.${userId}&select=id`, { headers }, token),
     ])
 
-    const totalReadings = totalRes.count || 0
-    const correctReadings = correctRes.count || 0
+    // 从 content-range header 获取计数
+    const getCount = (res: Response) => {
+      const range = res.headers.get('content-range')
+      if (range) {
+        const match = range.match(/\/(\d+)/)
+        return match ? parseInt(match[1]) : 0
+      }
+      return 0
+    }
+
+    const totalReadings = getCount(totalRes)
+    const correctReadings = getCount(correctRes)
 
     return {
       totalReadings,
       correctReadings,
       accuracy: totalReadings ? Math.round((correctReadings / totalReadings) * 100) : 0,
-      totalContents: contentsRes.count || 0,
-      mistakesCount: mistakesRes.count || 0,
-      danceCount: danceRes.count || 0,
+      totalContents: getCount(contentsRes),
+      mistakesCount: getCount(mistakesRes),
+      danceCount: getCount(danceRes),
     }
   },
 

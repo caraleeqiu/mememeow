@@ -29,34 +29,36 @@ export function Home() {
 
   const loadContentList = useCallback(async () => {
     try {
-      const list = await content.list()
+      const list = await content.list(accessToken || undefined)
       setContentList(list)
     } catch (err) {
       // Silent fail for background loading
     }
-  }, [])
+  }, [accessToken])
 
   useEffect(() => {
-    loadContentList()
-  }, [loadContentList])
+    if (accessToken) {
+      loadContentList()
+    }
+  }, [accessToken, loadContentList])
 
   const loadStats = useCallback(async () => {
     try {
-      const s = await reading.stats()
+      const s = await reading.stats(user?.id, accessToken || undefined)
       setStats(s)
     } catch (err) {
       // Silent fail
     }
-  }, [])
+  }, [user?.id, accessToken])
 
   const loadMistakes = useCallback(async () => {
     try {
-      const m = await reading.mistakes()
+      const m = await reading.mistakes(false, accessToken || undefined)
       setMistakes(m)
     } catch (err) {
       // Silent fail
     }
-  }, [])
+  }, [accessToken])
 
   const handleSubmitUrl = useCallback(async (url: string) => {
     setIsLoading(true)
