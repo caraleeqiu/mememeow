@@ -210,7 +210,7 @@ export const reading = {
       .eq('user_id', user.id)
       .eq('content_id', contentId)
       .eq('sentence_index', sentenceIndex)
-      .single()
+      .maybeSingle()
 
     let carrotsEarned = 0
     let attempts = 1
@@ -273,7 +273,7 @@ export const reading = {
         .eq('user_id', user.id)
         .eq('content_id', contentId)
         .eq('sentence_index', sentenceIndex)
-        .single()
+        .maybeSingle()
 
       if (existingMistake) {
         await supabase
