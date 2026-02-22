@@ -26,6 +26,11 @@ export function ReadingArea({
   const [combo, setCombo] = useState(0)
   const [isProcessing, setIsProcessing] = useState(false)
 
+  // 示范朗读状态
+  const [isDemoing, setIsDemoing] = useState(false)
+  const [highlightedWordIndex, setHighlightedWordIndex] = useState(-1)
+  const speechSynthRef = useRef<SpeechSynthesisUtterance | null>(null)
+
   const { isListening, transcript, toggleListening, stopListening, resetTranscript, isSupported } = useSpeechRecognition()
 
   // 使用 ref 保持回调函数的最新引用
@@ -62,6 +67,79 @@ export function ReadingArea({
       onMoodChangeRef.current('listening', '我在听...')
     }
   }, [isListening])
+
+  // 示范朗读功能
+  const handleDemo = useCallback(() => {
+    if (isDemoing) {
+      // 停止示范
+      window.speechSynthesis.cancel()
+      setIsDemoing(false)
+      setHighlightedWordIndex(-1)
+      return
+    }
+
+    const sentence = sentences[currentIndex]
+    const words = sentence.split(/\s+/)
+
+    const utterance = new SpeechSynthesisUtterance(sentence)
+    utterance.lang = 'en-US'
+    utterance.rate = 0.85 // 稍慢一点，便于跟读
+    utterance.pitch = 1
+
+    // 选择英语声音
+    const voices = window.speechSynthesis.getVoices()
+    const englishVoice = voices.find(v => v.lang.startsWith('en-') && v.name.includes('Female')) ||
+                         voices.find(v => v.lang.startsWith('en-'))
+    if (englishVoice) {
+      utterance.voice = englishVoice
+    }
+
+    let currentWordIndex = 0
+    const wordsCount = words.length
+    const estimatedDuration = sentence.length * 60 // 估算每个字符60ms
+
+    // 使用定时器模拟单词高亮
+    setIsDemoing(true)
+    setHighlightedWordIndex(0)
+    onMoodChangeRef.current('listening', '听示范...')
+
+    const wordInterval = estimatedDuration / wordsCount
+    const timer = setInterval(() => {
+      currentWordIndex++
+      if (currentWordIndex < wordsCount) {
+        setHighlightedWordIndex(currentWordIndex)
+      }
+    }, wordInterval)
+
+    utterance.onend = () => {
+      clearInterval(timer)
+      setIsDemoing(false)
+      setHighlightedWordIndex(-1)
+      onMoodChangeRef.current('idle', '轮到你啦！')
+    }
+
+    utterance.onerror = () => {
+      clearInterval(timer)
+      setIsDemoing(false)
+      setHighlightedWordIndex(-1)
+      onMoodChangeRef.current('encouraging', '示范播放失败')
+    }
+
+    speechSynthRef.current = utterance
+    window.speechSynthesis.speak(utterance)
+  }, [isDemoing, sentences, currentIndex])
+
+  // 组件卸载时停止语音
+  useEffect(() => {
+    return () => {
+      window.speechSynthesis.cancel()
+    }
+  }, [])
+
+  // 预加载语音
+  useEffect(() => {
+    window.speechSynthesis.getVoices()
+  }, [])
 
   // 检测是否为英文（主要是ASCII字母）
   const isEnglishText = (text: string): boolean => {
@@ -200,17 +278,43 @@ export function ReadingArea({
       {/* 当前句子 */}
       <div className="reading-area__sentence">
         <span className="reading-area__sentence-number">#{currentIndex + 1}</span>
-        <p className="reading-area__sentence-text">{sentences[currentIndex]}</p>
+        <p className="reading-area__sentence-text">
+          {isDemoing ? (
+            // 示范时显示高亮单词
+            sentences[currentIndex].split(/\s+/).map((word, idx) => (
+              <span
+                key={idx}
+                className={`reading-area__word ${idx === highlightedWordIndex ? 'highlighted' : ''} ${idx < highlightedWordIndex ? 'read' : ''}`}
+              >
+                {word}{' '}
+              </span>
+            ))
+          ) : (
+            sentences[currentIndex]
+          )}
+        </p>
       </div>
 
-      {/* 录音按钮 */}
-      <button
-        className={`reading-area__record-btn ${isListening ? 'recording' : ''}`}
-        onClick={handleToggleRecording}
-        disabled={isProcessing}
-      >
-        {isProcessing ? '处理中...' : isListening ? '🎤 点击结束' : '🎤 点击开始'}
-      </button>
+      {/* 按钮组 */}
+      <div className="reading-area__buttons">
+        {/* 示范按钮 */}
+        <button
+          className={`reading-area__demo-btn ${isDemoing ? 'playing' : ''}`}
+          onClick={handleDemo}
+          disabled={isProcessing || isListening}
+        >
+          {isDemoing ? '⏹️ 停止' : '🔊 示范'}
+        </button>
+
+        {/* 录音按钮 */}
+        <button
+          className={`reading-area__record-btn ${isListening ? 'recording' : ''}`}
+          onClick={handleToggleRecording}
+          disabled={isProcessing || isDemoing}
+        >
+          {isProcessing ? '处理中...' : isListening ? '🎤 结束' : '🎤 跟读'}
+        </button>
+      </div>
 
       <p className="reading-area__tip">匹配度 ≥80% 得 1🥕 · 集满 10🥕 看猫跳舞</p>
 

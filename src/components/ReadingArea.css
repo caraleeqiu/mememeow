@@ -212,3 +212,72 @@
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.02); }
 }
+
+/* 按钮组 */
+.reading-area__buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+/* 示范按钮 */
+.reading-area__demo-btn {
+  padding: 20px 32px;
+  font-size: 18px;
+  font-weight: bold;
+  border: none;
+  border-radius: 50px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: linear-gradient(135deg, #9B59B6, #8E44AD);
+  color: white;
+  box-shadow: 0 4px 0 #7D3C98;
+}
+
+.reading-area__demo-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 0 #7D3C98;
+}
+
+.reading-area__demo-btn:active:not(:disabled),
+.reading-area__demo-btn.playing {
+  transform: translateY(2px);
+  box-shadow: 0 2px 0 #7D3C98;
+}
+
+.reading-area__demo-btn.playing {
+  background: linear-gradient(135deg, #E74C3C, #C0392B);
+  box-shadow: 0 2px 0 #A93226;
+  animation: pulse 1s ease infinite;
+}
+
+.reading-area__demo-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* 单词高亮 */
+.reading-area__word {
+  display: inline;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.reading-area__word.highlighted {
+  background: #FFE066;
+  color: #333;
+  font-weight: bold;
+  transform: scale(1.1);
+  animation: wordPop 0.3s ease;
+}
+
+.reading-area__word.read {
+  color: #4ECDC4;
+}
+
+@keyframes wordPop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+  100% { transform: scale(1.1); }
+}
