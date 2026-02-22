@@ -70,9 +70,26 @@ export const content = {
     }
   },
 
-  // 从 URL 提取内容（简化版：仅支持文章抓取）
+  // 从 URL 提取内容
   async extract(url: string) {
-    const { data: { user } } = await supabase.auth.getUser()
+    console.log('[extract] Starting extraction for:', url)
+
+    // 添加超时保护
+    const userPromise = supabase.auth.getUser()
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Auth timeout')), 5000)
+    )
+
+    let user
+    try {
+      const result = await Promise.race([userPromise, timeoutPromise]) as any
+      user = result.data?.user
+      console.log('[extract] Got user:', user?.id)
+    } catch (e) {
+      console.error('[extract] Auth failed:', e)
+      throw new Error('认证超时，请刷新页面重试')
+    }
+
     if (!user) throw new Error('Not authenticated')
 
     // 检测平台
