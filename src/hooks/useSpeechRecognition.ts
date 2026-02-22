@@ -30,10 +30,11 @@ interface SpeechRecognitionInstance extends EventTarget {
   lang: string
   start(): void
   stop(): void
+  abort(): void
   onstart: (() => void) | null
   onend: (() => void) | null
   onresult: ((event: SpeechRecognitionEvent) => void) | null
-  onerror: (() => void) | null
+  onerror: ((event: { error: string }) => void) | null
 }
 
 declare global {
@@ -46,7 +47,7 @@ declare global {
 interface UseSpeechRecognitionReturn {
   isListening: boolean
   transcript: string
-  startListening: () => void
+  toggleListening: () => void
   stopListening: () => void
   resetTranscript: () => void
   isSupported: boolean
@@ -56,6 +57,7 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
   const [isListening, setIsListening] = useState(false)
   const [transcript, setTranscript] = useState('')
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null)
+  const fullTranscriptRef = useRef('')
 
   const isSupported = typeof window !== 'undefined' &&
     ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)
@@ -66,21 +68,48 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
     const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition
     const recognition = new SpeechRecognitionAPI()
 
-    recognition.continuous = false
+    // 持续监听，允许停顿
+    recognition.continuous = true
     recognition.interimResults = true
     recognition.lang = 'en-US'
 
-    recognition.onstart = () => setIsListening(true)
-    recognition.onend = () => setIsListening(false)
-
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
-      const current = event.resultIndex
-      const result = event.results[current]
-      setTranscript(result[0].transcript)
+    recognition.onstart = () => {
+      setIsListening(true)
+      fullTranscriptRef.current = ''
     }
 
-    recognition.onerror = () => {
+    recognition.onend = () => {
       setIsListening(false)
+    }
+
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
+      let finalTranscript = ''
+      let interimTranscript = ''
+
+      for (let i = 0; i < event.results.length; i++) {
+        const result = event.results[i]
+        if (result.isFinal) {
+          finalTranscript += result[0].transcript + ' '
+        } else {
+          interimTranscript += result[0].transcript
+        }
+      }
+
+      // 更新完整文本
+      if (finalTranscript) {
+        fullTranscriptRef.current = finalTranscript.trim()
+      }
+
+      // 显示实时结果
+      setTranscript((fullTranscriptRef.current + ' ' + interimTranscript).trim())
+    }
+
+    recognition.onerror = (event) => {
+      console.log('[Speech] Error:', event.error)
+      // 忽略 no-speech 错误，继续监听
+      if (event.error !== 'no-speech') {
+        setIsListening(false)
+      }
     }
 
     recognitionRef.current = recognition
@@ -90,17 +119,28 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
   const stopListening = useCallback(() => {
     if (recognitionRef.current) {
       recognitionRef.current.stop()
+      recognitionRef.current = null
     }
   }, [])
 
+  // 切换监听状态
+  const toggleListening = useCallback(() => {
+    if (isListening) {
+      stopListening()
+    } else {
+      startListening()
+    }
+  }, [isListening, startListening, stopListening])
+
   const resetTranscript = useCallback(() => {
     setTranscript('')
+    fullTranscriptRef.current = ''
   }, [])
 
   return {
     isListening,
     transcript,
-    startListening,
+    toggleListening,
     stopListening,
     resetTranscript,
     isSupported
