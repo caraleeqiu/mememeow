@@ -29,8 +29,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     // 获取当前 session
+    console.log('[AuthContext] Getting session...')
     supabase.auth.getSession()
       .then(({ data: { session } }: { data: { session: Session | null } }) => {
+        console.log('[AuthContext] Session:', session?.user?.id)
         setUser(session?.user ?? null)
         if (session?.user) {
           loadProfile(session.user.id)
@@ -67,6 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const loadProfile = async (userId: string) => {
+    console.log('[AuthContext] loadProfile called for:', userId)
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -74,10 +77,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .eq('id', userId)
         .single()
 
+      console.log('[AuthContext] Profile loaded:', data, 'error:', error)
       if (error) throw error
       setProfile(data)
     } catch (error) {
-      console.error('Error loading profile:', error)
+      console.error('[AuthContext] Error loading profile:', error)
     } finally {
       setIsLoading(false)
     }
