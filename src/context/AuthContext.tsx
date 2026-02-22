@@ -30,9 +30,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let mounted = true
 
+    // 最大等待 10 秒，防止永久卡住
+    const maxTimeout = setTimeout(() => {
+      if (mounted) {
+        setIsLoading(false)
+      }
+    }, 10000)
+
     const init = async () => {
       try {
-        // 直接获取 session，不设超时（OAuth redirect 需要时间处理 URL token）
         const { data: { session } } = await supabase.auth.getSession()
 
         if (!mounted) return
@@ -49,6 +55,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (mounted) {
           setIsLoading(false)
         }
+      } finally {
+        clearTimeout(maxTimeout)
       }
     }
 
@@ -64,6 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           await loadProfile(session.user.id)
         } else {
           setProfile(null)
+          setIsLoading(false)
         }
       }
     )
