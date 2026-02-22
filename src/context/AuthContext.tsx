@@ -71,54 +71,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loadProfile = async (userId: string) => {
     console.log('[AuthContext] loadProfile called for:', userId)
 
-    // 超时控制
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Profile query timeout')), 5000)
-    )
-
+    // 使用 fetch 直接查询，避免 Supabase 客户端问题
     try {
-      // 先尝试获取 profile，带超时
-      const queryPromise = supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .maybeSingle()
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-      const result = await Promise.race([queryPromise, timeoutPromise]) as any
-      let { data, error } = result
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 5000)
 
-      console.log('[AuthContext] Profile query result:', data, 'error:', error)
-
-      // 如果 profile 不存在，创建一个
-      if (!data && !error) {
-        console.log('[AuthContext] Profile not found, creating...')
-        const createPromise = supabase
-          .from('profiles')
-          .insert({
-            id: userId,
-            carrots: 0,
-          })
-          .select()
-          .single()
-
-        const createResult = await Promise.race([createPromise, timeoutPromise]) as any
-
-        if (createResult.error) {
-          console.error('[AuthContext] Error creating profile:', createResult.error)
-        } else {
-          data = createResult.data
-          console.log('[AuthContext] Profile created:', data)
+      const response = await fetch(
+        `${supabaseUrl}/rest/v1/profiles?id=eq.${userId}&select=*`,
+        {
+          headers: {
+            'apikey': supabaseKey,
+            'Authorization': `Bearer ${supabaseKey}`,
+          },
+          signal: controller.signal,
         }
-      }
+      )
+      clearTimeout(timeoutId)
 
-      if (error) throw error
-      if (data) {
-        setProfile(data)
-        console.log('[AuthContext] Profile set with carrots:', data.carrots)
+      const data = await response.json()
+      console.log('[AuthContext] Profile fetch result:', data)
+
+      if (data && data.length > 0) {
+        setProfile(data[0])
+        console.log('[AuthContext] Profile set with carrots:', data[0].carrots)
+      } else {
+        // Profile 不存在，创建一个
+        console.log('[AuthContext] Profile not found, creating...')
+        const createResponse = await fetch(
+          `${supabaseUrl}/rest/v1/profiles`,
+          {
+            method: 'POST',
+            headers: {
+              'apikey': supabaseKey,
+              'Authorization': `Bearer ${supabaseKey}`,
+              'Content-Type': 'application/json',
+              'Prefer': 'return=representation',
+            },
+            body: JSON.stringify({ id: userId, carrots: 0 }),
+          }
+        )
+        const newProfile = await createResponse.json()
+        console.log('[AuthContext] Profile created:', newProfile)
+        if (newProfile && newProfile.length > 0) {
+          setProfile(newProfile[0])
+        } else {
+          setProfile({ id: userId, email: '', carrots: 0 })
+        }
       }
     } catch (error) {
       console.error('[AuthContext] Error loading profile:', error)
-      // 超时或错误时设置默认 profile
       setProfile({ id: userId, email: '', carrots: 0 })
     } finally {
       setIsLoading(false)
