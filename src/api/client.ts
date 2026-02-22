@@ -148,6 +148,18 @@ export const content = {
       throw new Error('Not authenticated')
     }
 
+    // 检测是否为英文（主要是ASCII字母）
+    const isEnglishText = (t: string): boolean => {
+      const letters = t.replace(/[^a-zA-Z\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff]/g, '')
+      if (letters.length === 0) return true
+      const englishLetters = letters.replace(/[^a-zA-Z]/g, '')
+      return englishLetters.length / letters.length > 0.5
+    }
+
+    if (!isEnglishText(text)) {
+      throw new Error('目前只支持英文哦~')
+    }
+
     const sentences = text
       .replace(/\s+/g, ' ')
       .split(/(?<=[.!?])\s+/)
@@ -156,7 +168,7 @@ export const content = {
       .slice(0, 50)
 
     if (sentences.length === 0) {
-      throw new Error('No valid sentences found. Make sure the text contains complete sentences.')
+      throw new Error('没有找到有效句子，请确保文本包含完整的英文句子（以.!?结尾）')
     }
 
     console.log('[paste] Inserting to Supabase, sentences:', sentences.length)
