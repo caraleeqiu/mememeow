@@ -397,8 +397,16 @@ Rules:
       type: 'video',
     }
   } catch (error: any) {
-    console.error('[ytdl] Error:', error.message)
-    throw new Error(`YouTube 提取失败: ${error.message}`)
+    console.error('[ytdl] Error:', error.message, error.stack)
+
+    // 如果 ytdl-core 失败，尝试 cobalt 作为备选
+    console.log('[ytdl] Falling back to cobalt...')
+    try {
+      return await extractWithGemini(`https://www.youtube.com/watch?v=${videoId}`, 'youtube')
+    } catch (cobaltError: any) {
+      console.error('[cobalt] Also failed:', cobaltError.message)
+      throw new Error(`YouTube 提取失败: ytdl-core 和 cobalt 均不可用。请尝试有字幕的视频，或使用"粘贴文字"功能。`)
+    }
   }
 }
 
