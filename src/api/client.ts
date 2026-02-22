@@ -72,15 +72,8 @@ export const content = {
   },
 
   // 从 URL 提取内容
-  async extract(url: string) {
+  async extract(url: string, userId?: string) {
     console.log('[extract] Starting extraction for:', url)
-
-    // 直接从 session 获取用户，避免 getUser() 的 lock 问题
-    const { data: { session } } = await supabase.auth.getSession()
-    const user = session?.user
-    console.log('[extract] Got user from session:', user?.id)
-
-    if (!user) throw new Error('请先登录')
 
     // 检测平台
     const urlLower = url.toLowerCase()
@@ -129,10 +122,13 @@ export const content = {
         throw new Error('No text content found in this video')
       }
 
+      // 使用传入的 userId
+      if (!userId) throw new Error('请先登录')
+
       const { data, error } = await supabase
         .from('contents')
         .insert({
-          user_id: user.id,
+          user_id: userId,
           url,
           title: extracted.title || 'Video',
           type: 'video',

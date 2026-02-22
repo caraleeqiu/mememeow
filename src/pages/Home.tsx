@@ -60,14 +60,13 @@ export function Home() {
 
   const handleSubmitUrl = async (url: string) => {
     console.log('=== handleSubmitUrl called ===', url)
-    alert('开始提取: ' + url) // 临时弹窗确认
     setIsLoading(true)
     setError('')
     setCatMood('listening')
     setCatMessage('正在提取内容...')
 
     try {
-      const result = await content.extract(url)
+      const result = await content.extract(url, user?.id)
       setCurrentContent(result as Content)
 
       // 加载进度
