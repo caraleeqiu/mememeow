@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { YoutubeTranscript } from 'youtube-transcript'
+import ytdl from '@distube/ytdl-core'
 
 // API Keys
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ''
@@ -282,9 +283,123 @@ async function extractYouTube(url: string) {
     console.log('[youtube] Transcript not available:', error.message)
   }
 
-  // 方案2: 下载音频 + Gemini 转写
-  console.log('[youtube] Falling back to audio download + Gemini...')
-  return await extractWithGemini(url, 'youtube')
+  // 方案2: 使用 ytdl-core 下载音频 + Gemini 转写
+  console.log('[youtube] Falling back to ytdl-core + Gemini...')
+  return await extractYouTubeWithYtdl(videoId)
+}
+
+// 使用 ytdl-core 下载 YouTube 音频并转写
+async function extractYouTubeWithYtdl(videoId: string) {
+  console.log('[ytdl] Starting download for:', videoId)
+
+  try {
+    const url = `https://www.youtube.com/watch?v=${videoId}`
+
+    // 获取视频信息
+    const info = await ytdl.getInfo(url)
+    const title = info.videoDetails.title
+    console.log('[ytdl] Video title:', title)
+
+    // 选择最小的音频格式
+    const audioFormats = ytdl.filterFormats(info.formats, 'audioonly')
+    if (audioFormats.length === 0) {
+      throw new Error('没有找到音频格式')
+    }
+
+    // 选择最小的音频（节省时间）
+    const format = audioFormats.sort((a, b) => (a.contentLength || 0) - (b.contentLength || 0))[0]
+    console.log('[ytdl] Selected format:', format.mimeType, 'size:', format.contentLength)
+
+    // 下载音频
+    const chunks: Buffer[] = []
+    const stream = ytdl(url, { format })
+
+    await new Promise<void>((resolve, reject) => {
+      stream.on('data', (chunk: Buffer) => chunks.push(chunk))
+      stream.on('end', resolve)
+      stream.on('error', reject)
+
+      // 30秒超时
+      setTimeout(() => reject(new Error('下载超时')), 30000)
+    })
+
+    const audioBuffer = Buffer.concat(chunks)
+    const audioBase64 = audioBuffer.toString('base64')
+    console.log('[ytdl] Audio size:', Math.round(audioBase64.length / 1024), 'KB')
+
+    if (audioBase64.length > 20 * 1024 * 1024) {
+      throw new Error('视频太长，请选择较短的视频（建议3分钟以内）')
+    }
+
+    // 发送到 Gemini 转写
+    console.log('[ytdl] Sending to Gemini...')
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`
+
+    const geminiResponse = await fetchWithTimeout(geminiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            {
+              text: `Transcribe this audio to English text.
+Rules:
+1. Output ONLY the transcription, no explanations
+2. Split into sentences (one per line)
+3. Fix any grammar or punctuation
+4. If the audio is not in English, translate it to English
+5. Remove filler words like "um", "uh", "like"
+6. Each sentence should be 10-150 characters`
+            },
+            {
+              inline_data: {
+                mime_type: 'audio/webm',
+                data: audioBase64
+              }
+            }
+          ]
+        }],
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 4096,
+        }
+      }),
+    }, 45000)
+
+    if (!geminiResponse.ok) {
+      const errorData = await geminiResponse.text()
+      console.error('[ytdl] Gemini error:', errorData)
+      throw new Error('Gemini 转写失败')
+    }
+
+    const geminiData = await geminiResponse.json()
+    const transcription = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || ''
+    console.log('[ytdl] Transcription length:', transcription.length)
+
+    if (!transcription) {
+      throw new Error('无法识别音频内容')
+    }
+
+    const sentences = transcription
+      .split('\n')
+      .map((s: string) => s.trim())
+      .filter((s: string) => s.length >= 10 && s.length <= 200)
+      .slice(0, 50)
+
+    if (sentences.length === 0) {
+      throw new Error('未能提取到有效句子')
+    }
+
+    return {
+      title,
+      sentences,
+      platform: 'youtube',
+      type: 'video',
+    }
+  } catch (error: any) {
+    console.error('[ytdl] Error:', error.message)
+    throw new Error(`YouTube 提取失败: ${error.message}`)
+  }
 }
 
 // Extract audio and transcribe using Gemini
