@@ -1,7 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { YoutubeTranscript } from 'youtube-transcript'
 
-// Gemini API for audio transcription
+// API Keys
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ''
+const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || ''
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CORS headers
@@ -32,15 +34,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const urlLower = url.toLowerCase()
 
-    // TikTok
+    // TikTok - 使用 RapidAPI 下载 + Gemini 转写
     if (urlLower.includes('tiktok.com')) {
-      const result = await extractWithGemini(url, 'tiktok')
+      if (!RAPIDAPI_KEY) {
+        return res.status(500).json({ error: 'RapidAPI key not configured' })
+      }
+      const result = await extractTikTok(url)
       return res.status(200).json(result)
     }
 
-    // YouTube
+    // YouTube - 使用免费字幕 API
     if (urlLower.includes('youtube.com') || urlLower.includes('youtu.be')) {
-      const result = await extractWithGemini(url, 'youtube')
+      const result = await extractYouTube(url)
       return res.status(200).json(result)
     }
 
@@ -64,6 +69,212 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ? '请求超时，请稍后重试'
       : (error.message || 'Extraction failed')
     return res.status(500).json({ error: errorMsg })
+  }
+}
+
+// Extract TikTok using RapidAPI + Gemini transcription
+async function extractTikTok(url: string) {
+  console.log('[tiktok] Extracting video for:', url)
+
+  try {
+    // Step 1: 使用 RapidAPI 获取下载链接
+    console.log('[tiktok] Step 1: Getting download URL from RapidAPI...')
+    const rapidResponse = await fetchWithTimeout(
+      `https://tiktok-video-downloader-api.p.rapidapi.com/media?videoUrl=${encodeURIComponent(url)}`,
+      {
+        method: 'GET',
+        headers: {
+          'x-rapidapi-key': RAPIDAPI_KEY,
+          'x-rapidapi-host': 'tiktok-video-downloader-api.p.rapidapi.com',
+        },
+      },
+      20000
+    )
+
+    if (!rapidResponse.ok) {
+      const errorText = await rapidResponse.text()
+      console.error('[tiktok] RapidAPI error:', rapidResponse.status, errorText)
+      throw new Error('无法获取 TikTok 视频信息')
+    }
+
+    const rapidData = await rapidResponse.json()
+    console.log('[tiktok] RapidAPI response:', JSON.stringify(rapidData).slice(0, 200))
+
+    // 获取音频或视频下载链接
+    const downloadUrl = rapidData.downloadUrl || rapidData.audioUrl || rapidData.videoUrl
+    if (!downloadUrl) {
+      throw new Error('无法获取视频下载链接')
+    }
+
+    // Step 2: 下载音频/视频
+    console.log('[tiktok] Step 2: Downloading media...')
+    const mediaResponse = await fetchWithTimeout(downloadUrl, {}, 30000)
+    if (!mediaResponse.ok) {
+      throw new Error('视频下载失败')
+    }
+
+    const mediaBuffer = await mediaResponse.arrayBuffer()
+    const mediaBase64 = Buffer.from(mediaBuffer).toString('base64')
+    console.log('[tiktok] Media size:', Math.round(mediaBase64.length / 1024), 'KB')
+
+    if (mediaBase64.length > 20 * 1024 * 1024) {
+      throw new Error('视频太长，请选择较短的视频（建议1分钟以内）')
+    }
+
+    // Step 3: 使用 Gemini 转写
+    console.log('[tiktok] Step 3: Transcribing with Gemini...')
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`
+
+    const geminiResponse = await fetchWithTimeout(geminiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            {
+              text: `Transcribe this audio/video to English text.
+Rules:
+1. Output ONLY the transcription, no explanations
+2. Split into sentences (one per line)
+3. Fix any grammar or punctuation
+4. If not in English, translate to English
+5. Remove filler words like "um", "uh", "like"
+6. Each sentence should be 10-150 characters`
+            },
+            {
+              inline_data: {
+                mime_type: 'video/mp4',
+                data: mediaBase64
+              }
+            }
+          ]
+        }],
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 4096,
+        }
+      }),
+    }, 60000) // 60 second timeout for Gemini
+
+    if (!geminiResponse.ok) {
+      const errorData = await geminiResponse.text()
+      console.error('[tiktok] Gemini error:', errorData)
+      throw new Error('Gemini 转写失败')
+    }
+
+    const geminiData = await geminiResponse.json()
+    const transcription = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || ''
+    console.log('[tiktok] Transcription length:', transcription.length)
+
+    if (!transcription) {
+      throw new Error('无法识别视频内容')
+    }
+
+    // Step 4: 解析句子
+    const sentences = transcription
+      .split('\n')
+      .map((s: string) => s.trim())
+      .filter((s: string) => s.length >= 10 && s.length <= 200)
+      .slice(0, 50)
+
+    if (sentences.length === 0) {
+      throw new Error('未能提取到有效句子')
+    }
+
+    return {
+      title: rapidData.title || 'TikTok Video',
+      sentences,
+      platform: 'tiktok',
+      type: 'video',
+    }
+  } catch (error: any) {
+    console.error('[tiktok] Error:', error)
+    throw new Error(`TikTok 提取失败: ${error.message}`)
+  }
+}
+
+// Extract YouTube transcript using free API
+async function extractYouTube(url: string) {
+  console.log('[youtube] Extracting transcript for:', url)
+
+  try {
+    // 提取视频 ID
+    let videoId = ''
+    if (url.includes('youtu.be/')) {
+      videoId = url.split('youtu.be/')[1].split('?')[0]
+    } else if (url.includes('v=')) {
+      videoId = url.split('v=')[1].split('&')[0]
+    }
+
+    if (!videoId) {
+      throw new Error('无法解析 YouTube 视频 ID')
+    }
+
+    console.log('[youtube] Video ID:', videoId)
+
+    // 获取字幕
+    const transcript = await YoutubeTranscript.fetchTranscript(videoId)
+    console.log('[youtube] Got transcript, segments:', transcript.length)
+
+    if (!transcript || transcript.length === 0) {
+      throw new Error('该视频没有字幕，请选择有字幕的视频')
+    }
+
+    // 合并短句子，拆分长句子
+    const sentences: string[] = []
+    let currentSentence = ''
+
+    for (const segment of transcript) {
+      const text = segment.text.replace(/\n/g, ' ').trim()
+      if (!text) continue
+
+      currentSentence += (currentSentence ? ' ' : '') + text
+
+      // 如果句子以句号/问号/感叹号结尾，或者太长了，就保存
+      if (/[.!?]$/.test(currentSentence) || currentSentence.length > 150) {
+        if (currentSentence.length >= 10 && currentSentence.length <= 200) {
+          sentences.push(currentSentence)
+        } else if (currentSentence.length > 200) {
+          // 太长的句子按句号拆分
+          const parts = currentSentence.split(/(?<=[.!?])\s+/)
+          for (const part of parts) {
+            if (part.length >= 10 && part.length <= 200) {
+              sentences.push(part.trim())
+            }
+          }
+        }
+        currentSentence = ''
+      }
+    }
+
+    // 处理剩余的句子
+    if (currentSentence.length >= 10 && currentSentence.length <= 200) {
+      sentences.push(currentSentence)
+    }
+
+    console.log('[youtube] Processed sentences:', sentences.length)
+
+    if (sentences.length === 0) {
+      throw new Error('未能提取到有效句子')
+    }
+
+    return {
+      title: 'YouTube Video',
+      sentences: sentences.slice(0, 50), // 最多50句
+      platform: 'youtube',
+      type: 'video',
+    }
+  } catch (error: any) {
+    console.error('[youtube] Error:', error)
+    if (error.message.includes('Transcript is disabled')) {
+      throw new Error('该视频禁用了字幕功能')
+    }
+    if (error.message.includes('No transcript')) {
+      throw new Error('该视频没有可用的字幕')
+    }
+    throw new Error(`YouTube 提取失败: ${error.message}`)
   }
 }
 
