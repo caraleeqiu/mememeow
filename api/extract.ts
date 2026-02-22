@@ -284,9 +284,81 @@ async function extractYouTube(url: string) {
     console.log('[youtube] Transcript not available:', error.message)
   }
 
-  // 方案2: 使用 ytdl-core 下载音频 + Gemini 转写
-  console.log('[youtube] Falling back to ytdl-core + Gemini...')
-  return await extractYouTubeWithYtdl(videoId)
+  // 方案2: 直接用 Gemini 解析 YouTube URL
+  console.log('[youtube] Falling back to Gemini direct parsing...')
+  return await extractYouTubeWithGemini(videoId)
+}
+
+// 直接用 Gemini 解析 YouTube 视频
+async function extractYouTubeWithGemini(videoId: string) {
+  const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`
+  console.log('[gemini-yt] Processing:', youtubeUrl)
+
+  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`
+
+  const response = await fetchWithTimeout(geminiUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{
+        parts: [
+          {
+            text: `Watch this YouTube video and transcribe all spoken content to English text.
+
+Rules:
+1. Output ONLY the transcription, no explanations or descriptions
+2. Split into sentences (one per line)
+3. Fix any grammar or punctuation
+4. If the audio is not in English, translate it to English
+5. Remove filler words like "um", "uh", "like"
+6. Each sentence should be 10-150 characters
+7. If you cannot access the video, say "ERROR: Cannot access video"`
+          },
+          {
+            fileData: {
+              fileUri: youtubeUrl,
+              mimeType: 'video/mp4'
+            }
+          }
+        ]
+      }],
+      generationConfig: {
+        temperature: 0.1,
+        maxOutputTokens: 4096,
+      }
+    }),
+  }, 60000)
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    console.error('[gemini-yt] Error:', errorText)
+    throw new Error('Gemini 无法处理该视频')
+  }
+
+  const data = await response.json()
+  const transcription = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+  console.log('[gemini-yt] Transcription length:', transcription.length)
+
+  if (transcription.includes('ERROR:') || !transcription) {
+    throw new Error('Gemini 无法访问该视频内容')
+  }
+
+  const sentences = transcription
+    .split('\n')
+    .map((s: string) => s.trim())
+    .filter((s: string) => s.length >= 10 && s.length <= 200)
+    .slice(0, 50)
+
+  if (sentences.length === 0) {
+    throw new Error('未能提取到有效句子')
+  }
+
+  return {
+    title: 'YouTube Video',
+    sentences,
+    platform: 'youtube',
+    type: 'video',
+  }
 }
 
 // 使用 ytdl-core 下载 YouTube 音频并转写
