@@ -160,30 +160,45 @@ export const content = {
     }
 
     console.log('[paste] Inserting to Supabase, sentences:', sentences.length)
-    try {
-      const { data, error } = await supabase
-        .from('contents')
-        .insert({
-          user_id: userId,
-          url: 'pasted',
-          title: title || 'Pasted Text',
-          type: 'article',
-          platform: 'paste',
-          sentences,
-        })
-        .select()
-        .single()
 
-      console.log('[paste] Insert result:', { data, error })
-      if (error) throw error
+    // 直接用 fetch 绕过 Supabase SDK（避免 SDK 卡住）
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-      return {
-        ...data,
-        totalSentences: sentences.length,
-      }
-    } catch (insertError) {
-      console.error('[paste] Insert error:', insertError)
-      throw insertError
+    console.log('[paste] Using fetch API directly')
+
+    const response = await fetch(`${supabaseUrl}/rest/v1/contents`, {
+      method: 'POST',
+      headers: {
+        'apikey': supabaseKey,
+        'Authorization': `Bearer ${supabaseKey}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=representation',
+      },
+      body: JSON.stringify({
+        user_id: userId,
+        url: 'pasted',
+        title: title || 'Pasted Text',
+        type: 'article',
+        platform: 'paste',
+        sentences,
+      }),
+    })
+
+    console.log('[paste] Fetch response status:', response.status)
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('[paste] Fetch error:', errorText)
+      throw new Error(`Insert failed: ${errorText}`)
+    }
+
+    const data = await response.json()
+    console.log('[paste] Insert success:', data)
+
+    return {
+      ...data[0],
+      totalSentences: sentences.length,
     }
   },
 
