@@ -117,7 +117,8 @@ export function Home() {
       currentContent!.id,
       sentenceIndex,
       sentenceText,
-      userSpeech
+      userSpeech,
+      user?.id
     )
 
     if (result.carrotsEarned > 0) {
@@ -125,7 +126,7 @@ export function Home() {
     }
 
     return result
-  }, [currentContent, profile?.carrots, updateCarrots])
+  }, [currentContent, user?.id, profile?.carrots, updateCarrots])
 
   const handleMoodChange = useCallback((mood: CatMood, message?: string) => {
     setCatMood(mood)

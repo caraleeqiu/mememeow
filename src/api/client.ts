@@ -302,23 +302,40 @@ export const content = {
 // Reading API
 // ============================================
 
+// Fetch helper for Supabase REST API
+async function supabaseFetch(path: string, options: RequestInit = {}) {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+  const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+  const response = await fetch(`${supabaseUrl}/rest/v1/${path}`, {
+    ...options,
+    headers: {
+      'apikey': supabaseKey,
+      'Authorization': `Bearer ${supabaseKey}`,
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  })
+
+  return response
+}
+
 export const reading = {
-  async record(contentId: string, sentenceIndex: number, sentenceText: string, userSpeech: string) {
-    const { data: { session } } = await supabase.auth.getSession()
-    const user = session?.user
-    if (!user) throw new Error('Not authenticated')
+  async record(contentId: string, sentenceIndex: number, sentenceText: string, userSpeech: string, userId?: string) {
+    if (!userId) throw new Error('Not authenticated')
+
+    console.log('[record] Starting with userId:', userId)
 
     // 使用改进的匹配算法
     const { isMatch, score } = matchSpeech(sentenceText, userSpeech)
+    console.log('[record] Match result:', { isMatch, score })
 
     // 检查是否已有记录
-    const { data: existing } = await supabase
-      .from('reading_records')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('content_id', contentId)
-      .eq('sentence_index', sentenceIndex)
-      .maybeSingle()
+    const existingRes = await supabaseFetch(
+      `reading_records?user_id=eq.${userId}&content_id=eq.${contentId}&sentence_index=eq.${sentenceIndex}&select=*`
+    )
+    const existingData = await existingRes.json()
+    const existing = existingData?.[0]
 
     let carrotsEarned = 0
     let attempts = 1
@@ -326,109 +343,91 @@ export const reading = {
 
     if (existing) {
       attempts = (existing.attempts || 0) + 1
-      await supabase
-        .from('reading_records')
-        .update({
+      await supabaseFetch(`reading_records?id=eq.${existing.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
           user_speech: userSpeech,
           is_correct: isMatch,
           attempts,
-        })
-        .eq('id', existing.id)
+        }),
+      })
 
       // 之前错误现在正确，奖励萝卜
       if (isMatch && !wasCorrectBefore) {
         carrotsEarned = 1
       }
     } else {
-      await supabase
-        .from('reading_records')
-        .insert({
-          user_id: user.id,
+      await supabaseFetch('reading_records', {
+        method: 'POST',
+        body: JSON.stringify({
+          user_id: userId,
           content_id: contentId,
           sentence_index: sentenceIndex,
           sentence_text: sentenceText,
           user_speech: userSpeech,
           is_correct: isMatch,
-        })
+        }),
+      })
 
       if (isMatch) {
         carrotsEarned = 1
       }
     }
 
-    // 使用原子操作更新萝卜数（修复竞态条件）
+    // 更新萝卜数
     if (carrotsEarned > 0) {
-      // 方法1: 使用 RPC 函数（需要在 Supabase 中创建）
-      const { error: rpcError } = await supabase.rpc('increment_carrots', {
-        user_id: user.id,
-        amount: carrotsEarned,
+      const profileRes = await supabaseFetch(`profiles?id=eq.${userId}&select=carrots`)
+      const profileData = await profileRes.json()
+      const currentCarrots = profileData?.[0]?.carrots || 0
+
+      await supabaseFetch(`profiles?id=eq.${userId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ carrots: currentCarrots + carrotsEarned }),
       })
-
-      // 如果 RPC 不存在，降级到普通更新（不完美但兼容）
-      if (rpcError?.code === '42883') {
-        // Function does not exist - fallback
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('carrots')
-          .eq('id', user.id)
-          .single()
-
-        if (profile) {
-          await supabase
-            .from('profiles')
-            .update({ carrots: (profile.carrots || 0) + carrotsEarned })
-            .eq('id', user.id)
-        }
-      }
     }
 
     // 错误次数超过2次，加入错题本
     if (!isMatch && attempts >= 2) {
-      const { data: existingMistake } = await supabase
-        .from('mistakes')
-        .select('id, attempts')
-        .eq('user_id', user.id)
-        .eq('content_id', contentId)
-        .eq('sentence_index', sentenceIndex)
-        .maybeSingle()
+      const mistakeRes = await supabaseFetch(
+        `mistakes?user_id=eq.${userId}&content_id=eq.${contentId}&sentence_index=eq.${sentenceIndex}&select=id,attempts`
+      )
+      const mistakeData = await mistakeRes.json()
+      const existingMistake = mistakeData?.[0]
 
       if (existingMistake) {
-        await supabase
-          .from('mistakes')
-          .update({ attempts: (existingMistake.attempts || 0) + 1, is_mastered: false })
-          .eq('id', existingMistake.id)
+        await supabaseFetch(`mistakes?id=eq.${existingMistake.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ attempts: (existingMistake.attempts || 0) + 1, is_mastered: false }),
+        })
       } else {
-        await supabase
-          .from('mistakes')
-          .insert({
-            user_id: user.id,
+        await supabaseFetch('mistakes', {
+          method: 'POST',
+          body: JSON.stringify({
+            user_id: userId,
             content_id: contentId,
             sentence_index: sentenceIndex,
             sentence_text: sentenceText,
-          })
+          }),
+        })
       }
     }
 
+    console.log('[record] Done:', { isMatch, score, carrotsEarned, attempts })
     return { isMatch, score, carrotsEarned, attempts }
   },
 
   async progress(contentId: string) {
-    const { data: records, error } = await supabase
-      .from('reading_records')
-      .select('sentence_index, is_correct, attempts')
-      .eq('content_id', contentId)
+    const recordsRes = await supabaseFetch(
+      `reading_records?content_id=eq.${contentId}&select=sentence_index,is_correct,attempts`
+    )
+    const records = await recordsRes.json()
 
-    if (error) throw error
+    const contentRes = await supabaseFetch(`contents?id=eq.${contentId}&select=sentences`)
+    const contentData = await contentRes.json()
 
-    const { data: contentData } = await supabase
-      .from('contents')
-      .select('sentences')
-      .eq('id', contentId)
-      .single()
-
-    const totalSentences = contentData?.sentences?.length || 0
+    const totalSentences = contentData?.[0]?.sentences?.length || 0
     const typedRecords = (records || []) as ProgressRecord[]
-    const completed = typedRecords.filter(r => r.is_correct).length
+    const completed = typedRecords.filter((r: ProgressRecord) => r.is_correct).length
 
     return {
       completed,
