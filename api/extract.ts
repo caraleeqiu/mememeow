@@ -6,7 +6,7 @@ import ytdl from '@distube/ytdl-core'
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ''
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || ''
 
-const API_VERSION = 'v19-instagram-try-all'
+const API_VERSION = 'v20-tiktok-youtube-only'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   console.log('[extract] API Version:', API_VERSION)
@@ -54,16 +54,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json(result)
     }
 
-    // Instagram - 使用 RapidAPI
+    // Instagram - 暂不支持
     if (urlLower.includes('instagram.com')) {
-      if (!RAPIDAPI_KEY) {
-        return res.status(500).json({ error: 'RapidAPI key not configured' })
-      }
-      const result = await extractInstagramV2(url)
-      return res.status(200).json(result)
+      return res.status(400).json({
+        error: 'Instagram 暂不支持，请使用 TikTok 或 YouTube 链接',
+      })
     }
 
-    // Twitter/X - 暂时禁用，API 不稳定
+    // Twitter/X - 暂不支持
     if (urlLower.includes('twitter.com') || urlLower.includes('x.com')) {
       return res.status(400).json({
         error: 'X/Twitter 暂不支持，请使用 TikTok 或 YouTube 链接',
