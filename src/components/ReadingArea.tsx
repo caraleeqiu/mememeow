@@ -63,6 +63,15 @@ export function ReadingArea({
     }
   }, [isListening])
 
+  // 检测是否为英文（主要是ASCII字母）
+  const isEnglishText = (text: string): boolean => {
+    // 移除标点和空格后，检查是否主要是英文字母
+    const letters = text.replace(/[^a-zA-Z\u4e00-\u9fff]/g, '')
+    if (letters.length === 0) return true
+    const englishLetters = letters.replace(/[^a-zA-Z]/g, '')
+    return englishLetters.length / letters.length > 0.5
+  }
+
   // 处理录音结束
   const handleToggleRecording = useCallback(async () => {
     if (isListening) {
@@ -70,6 +79,13 @@ export function ReadingArea({
 
       if (!transcript.trim()) {
         onMoodChangeRef.current('encouraging', '没听清楚，再说一次？')
+        return
+      }
+
+      // 检测是否为英文
+      if (!isEnglishText(transcript)) {
+        onMoodChangeRef.current('encouraging', '目前只支持英文哦~')
+        resetTranscript()
         return
       }
 
