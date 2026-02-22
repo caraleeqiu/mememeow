@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { YoutubeTranscript } from 'youtube-transcript'
+import ytdl from '@distube/ytdl-core'
 
 // API Keys
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ''
@@ -291,39 +292,94 @@ async function extractYouTube(url: string) {
   return await extractYouTubeWithGemini(videoId)
 }
 
-// 直接用 Gemini 解析 YouTube 视频
+// 下载 YouTube 音频并用 Gemini 转写
 async function extractYouTubeWithGemini(videoId: string) {
   const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`
-  console.log('[gemini-yt] Processing YouTube URL:', youtubeUrl)
+  console.log('[youtube-gemini] Processing:', youtubeUrl)
 
-  // 使用 gemini-1.5-flash 支持 YouTube URL
-  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent`
+  let audioBase64 = ''
+  let title = 'YouTube Video'
 
-  console.log('[gemini-yt] Calling Gemini API...')
-  const response = await fetchWithTimeout(geminiUrl, {
+  // 方法1: 尝试 ytdl-core
+  try {
+    console.log('[youtube-gemini] Trying ytdl-core...')
+    const info = await ytdl.getInfo(youtubeUrl)
+    title = info.videoDetails.title
+    console.log('[youtube-gemini] Video title:', title)
+
+    const audioFormats = ytdl.filterFormats(info.formats, 'audioonly')
+    if (audioFormats.length === 0) {
+      throw new Error('No audio format found')
+    }
+
+    // 选择最小的音频格式
+    const format = audioFormats.sort((a, b) =>
+      (Number(a.contentLength) || 0) - (Number(b.contentLength) || 0)
+    )[0]
+    console.log('[youtube-gemini] Audio format:', format.mimeType)
+
+    const chunks: Buffer[] = []
+    const stream = ytdl(youtubeUrl, { format })
+
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('Download timeout')), 30000)
+      stream.on('data', (chunk: Buffer) => chunks.push(chunk))
+      stream.on('end', () => { clearTimeout(timeout); resolve() })
+      stream.on('error', (err) => { clearTimeout(timeout); reject(err) })
+    })
+
+    audioBase64 = Buffer.concat(chunks).toString('base64')
+    console.log('[youtube-gemini] ytdl-core success, size:', Math.round(audioBase64.length / 1024), 'KB')
+  } catch (ytdlError: any) {
+    console.log('[youtube-gemini] ytdl-core failed:', ytdlError.message)
+
+    // 方法2: 尝试 cobalt API
+    console.log('[youtube-gemini] Trying cobalt API...')
+    const audioUrl = await getAudioUrl(youtubeUrl)
+    if (!audioUrl) {
+      throw new Error('无法下载视频音频（ytdl-core 和 cobalt 均失败）')
+    }
+
+    const audioResponse = await fetchWithTimeout(audioUrl, {}, 30000)
+    if (!audioResponse.ok) {
+      throw new Error('音频下载失败')
+    }
+
+    const audioBuffer = await audioResponse.arrayBuffer()
+    audioBase64 = Buffer.from(audioBuffer).toString('base64')
+    console.log('[youtube-gemini] cobalt success, size:', Math.round(audioBase64.length / 1024), 'KB')
+  }
+
+  // 检查大小限制
+  if (audioBase64.length > 20 * 1024 * 1024) {
+    throw new Error('视频太长，请选择较短的视频（建议3分钟以内）')
+  }
+
+  // 发送到 Gemini 转写
+  console.log('[youtube-gemini] Sending to Gemini...')
+  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`
+
+  const geminiResponse = await fetchWithTimeout(geminiUrl, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': GEMINI_API_KEY
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       contents: [{
         parts: [
           {
-            text: `Watch this YouTube video and transcribe all spoken content to English text.
+            text: `Transcribe this audio to English text.
 
 Rules:
-1. Output ONLY the transcription, no explanations or descriptions
+1. Output ONLY the transcription, no explanations
 2. Split into sentences (one per line)
 3. Fix any grammar or punctuation
 4. If the audio is not in English, translate it to English
 5. Remove filler words like "um", "uh", "like"
-6. Each sentence should be 10-150 characters
-7. If you cannot access the video, say "ERROR: Cannot access video"`
+6. Each sentence should be 10-150 characters`
           },
           {
-            file_data: {
-              file_uri: youtubeUrl
+            inline_data: {
+              mime_type: 'audio/webm',
+              data: audioBase64
             }
           }
         ]
@@ -335,19 +391,19 @@ Rules:
     }),
   }, 60000)
 
-  console.log('[gemini-yt] Response status:', response.status)
-  if (!response.ok) {
-    const errorText = await response.text()
-    console.error('[gemini-yt] Error response:', errorText)
-    throw new Error(`Gemini 无法处理该视频: ${response.status}`)
+  console.log('[youtube-gemini] Gemini response:', geminiResponse.status)
+  if (!geminiResponse.ok) {
+    const errorText = await geminiResponse.text()
+    console.error('[youtube-gemini] Gemini error:', errorText)
+    throw new Error('Gemini 转写失败')
   }
 
-  const data = await response.json()
+  const data = await geminiResponse.json()
   const transcription = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
-  console.log('[gemini-yt] Transcription length:', transcription.length)
+  console.log('[youtube-gemini] Transcription length:', transcription.length)
 
-  if (transcription.includes('ERROR:') || !transcription) {
-    throw new Error('Gemini 无法访问该视频内容')
+  if (!transcription) {
+    throw new Error('无法识别音频内容')
   }
 
   const sentences = transcription
@@ -361,7 +417,7 @@ Rules:
   }
 
   return {
-    title: 'YouTube Video',
+    title,
     sentences,
     platform: 'youtube',
     type: 'video',
