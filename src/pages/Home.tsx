@@ -86,11 +86,14 @@ export function Home() {
   }
 
   const handlePasteText = async (title: string, text: string) => {
+    console.log('[Home] handlePasteText called, title:', title, 'text length:', text.length)
     setIsLoading(true)
     setError('')
 
     try {
+      console.log('[Home] Calling content.paste...')
       const result = await content.paste(title, text)
+      console.log('[Home] content.paste result:', result)
       setCurrentContent(result as Content)
       setInitialProgress([])
       setView('reading')

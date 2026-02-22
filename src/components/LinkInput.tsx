@@ -16,6 +16,8 @@ export function LinkInput({ onSubmit, onPaste, onFile, isLoading, onCancel, erro
   const [pasteTitle, setPasteTitle] = useState('')
   const [pasteText, setPasteText] = useState('')
 
+  console.log('[LinkInput] Rendered, mode:', mode, 'isLoading:', isLoading)
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -34,8 +36,14 @@ export function LinkInput({ onSubmit, onPaste, onFile, isLoading, onCancel, erro
 
   const handlePaste = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!pasteText.trim() || isLoading) return
+    console.log('[LinkInput] handlePaste called, text length:', pasteText.length)
+    if (!pasteText.trim() || isLoading) {
+      console.log('[LinkInput] handlePaste early return - empty or loading')
+      return
+    }
+    console.log('[LinkInput] Calling onPaste...')
     await onPaste(pasteTitle.trim(), pasteText.trim())
+    console.log('[LinkInput] onPaste completed')
     setPasteTitle('')
     setPasteText('')
     setMode('url')
