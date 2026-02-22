@@ -6,7 +6,7 @@ import ytdl from '@distube/ytdl-core'
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ''
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || ''
 
-const API_VERSION = 'v7-instagram-x'
+const API_VERSION = 'v8-english-only'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   console.log('[extract] API Version:', API_VERSION)
@@ -411,14 +411,21 @@ async function transcribeWithGemini(mediaBase64: string, mimeType: string): Prom
       contents: [{
         parts: [
           {
-            text: `Transcribe this audio/video to English text.
-Rules:
+            text: `Analyze this audio/video and transcribe it.
+
+IMPORTANT: First detect the language of the spoken content.
+
+If the content is NOT primarily in English (e.g., Chinese, Japanese, Korean, Spanish, etc.):
+- Output ONLY this exact line: "NOT_ENGLISH: [detected language]"
+- Example: "NOT_ENGLISH: Chinese"
+
+If the content IS in English:
+- Output the transcription following these rules:
 1. Output ONLY the transcription, no explanations
 2. Split into sentences (one per line)
 3. Fix any grammar or punctuation
-4. If not in English, translate to English
-5. Remove filler words like "um", "uh", "like"
-6. Each sentence should be 10-150 characters`
+4. Remove filler words like "um", "uh", "like"
+5. Each sentence should be 10-150 characters`
           },
           {
             inline_data: {
@@ -446,6 +453,12 @@ Rules:
 
   if (!transcription) {
     throw new Error('无法识别视频内容')
+  }
+
+  // 检查是否为非英语内容
+  if (transcription.startsWith('NOT_ENGLISH:')) {
+    const detectedLang = transcription.replace('NOT_ENGLISH:', '').trim()
+    throw new Error(`检测到${detectedLang}内容，目前只支持英文视频哦~`)
   }
 
   return transcription
