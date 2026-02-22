@@ -6,7 +6,7 @@ import ytdl from '@distube/ytdl-core'
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ''
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || ''
 
-const API_VERSION = 'v9-timeout-fix'
+const API_VERSION = 'v10-fast-lang-detect'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   console.log('[extract] API Version:', API_VERSION)
@@ -403,8 +403,11 @@ async function extractTwitter(url: string) {
   }
 }
 
-// 通用 Gemini 转写函数
-async function transcribeWithGemini(mediaBase64: string, mimeType: string): Promise<string> {
+// 快速语言检测（只用前 500KB 数据）
+async function detectLanguage(mediaBase64: string, mimeType: string): Promise<string> {
+  // 只取前 500KB 用于快速检测
+  const sampleData = mediaBase64.slice(0, 500 * 1024)
+
   const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`
 
   const geminiResponse = await fetchWithTimeout(geminiUrl, {
@@ -414,16 +417,58 @@ async function transcribeWithGemini(mediaBase64: string, mimeType: string): Prom
       contents: [{
         parts: [
           {
-            text: `Analyze this audio/video and transcribe it.
+            text: `What language is spoken in this audio/video?
+Reply with ONLY one word: the language name (e.g., "English", "Chinese", "Japanese", "Spanish", etc.)`
+          },
+          {
+            inline_data: {
+              mime_type: mimeType,
+              data: sampleData
+            }
+          }
+        ]
+      }],
+      generationConfig: {
+        temperature: 0,
+        maxOutputTokens: 20,
+      }
+    }),
+  }, 15000) // 15秒快速检测
 
-IMPORTANT: First detect the language of the spoken content.
+  if (!geminiResponse.ok) {
+    console.log('[detectLanguage] Failed, assuming English')
+    return 'English' // 检测失败就假设是英语，让后续流程处理
+  }
 
-If the content is NOT primarily in English (e.g., Chinese, Japanese, Korean, Spanish, etc.):
-- Output ONLY this exact line: "NOT_ENGLISH: [detected language]"
-- Example: "NOT_ENGLISH: Chinese"
+  const data = await geminiResponse.json()
+  const lang = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || 'English'
+  console.log('[detectLanguage] Detected:', lang)
+  return lang
+}
 
-If the content IS in English:
-- Output the transcription following these rules:
+// 通用 Gemini 转写函数（含语言检测）
+async function transcribeWithGemini(mediaBase64: string, mimeType: string): Promise<string> {
+  // Step 1: 快速语言检测
+  console.log('[gemini] Step 1: Quick language detection...')
+  const detectedLang = await detectLanguage(mediaBase64, mimeType)
+
+  if (detectedLang.toLowerCase() !== 'english') {
+    throw new Error(`检测到${detectedLang}内容，目前只支持英文视频哦~`)
+  }
+
+  // Step 2: 完整转写
+  console.log('[gemini] Step 2: Full transcription...')
+  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`
+
+  const geminiResponse = await fetchWithTimeout(geminiUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{
+        parts: [
+          {
+            text: `Transcribe this English audio/video to text.
+Rules:
 1. Output ONLY the transcription, no explanations
 2. Split into sentences (one per line)
 3. Fix any grammar or punctuation
@@ -443,7 +488,7 @@ If the content IS in English:
         maxOutputTokens: 4096,
       }
     }),
-  }, 45000) // 45秒超时，给 Vercel 留余量
+  }, 40000) // 40秒转写
 
   if (!geminiResponse.ok) {
     const errorData = await geminiResponse.text()
@@ -456,12 +501,6 @@ If the content IS in English:
 
   if (!transcription) {
     throw new Error('无法识别视频内容')
-  }
-
-  // 检查是否为非英语内容
-  if (transcription.startsWith('NOT_ENGLISH:')) {
-    const detectedLang = transcription.replace('NOT_ENGLISH:', '').trim()
-    throw new Error(`检测到${detectedLang}内容，目前只支持英文视频哦~`)
   }
 
   return transcription
