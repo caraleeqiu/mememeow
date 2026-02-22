@@ -315,9 +315,8 @@ Rules:
 7. If you cannot access the video, say "ERROR: Cannot access video"`
           },
           {
-            fileData: {
-              fileUri: youtubeUrl,
-              mimeType: 'video/mp4'
+            file_data: {
+              file_uri: youtubeUrl
             }
           }
         ]
