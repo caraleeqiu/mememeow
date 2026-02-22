@@ -28,31 +28,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    // 获取当前 session
-    console.log('[AuthContext] Getting session...')
-    supabase.auth.getSession()
-      .then(({ data: { session } }: { data: { session: Session | null } }) => {
-        console.log('[AuthContext] Session:', session?.user?.id)
-        setUser(session?.user ?? null)
+    let mounted = true
+
+    const init = async () => {
+      console.log('[AuthContext] Initializing...')
+
+      try {
+        // 用 Promise.race 加超时保护
+        const sessionPromise = supabase.auth.getSession()
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Session timeout')), 3000)
+        )
+
+        const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise]) as any
+
+        console.log('[AuthContext] Session user:', session?.user?.id)
+
+        if (!mounted) return
+
         if (session?.user) {
-          loadProfile(session.user.id)
+          setUser(session.user)
+          await loadProfile(session.user.id)
         } else {
+          setUser(null)
+          setProfile(null)
           setIsLoading(false)
         }
-      })
-      .catch((err: Error) => {
-        console.error('Failed to get session:', err)
-        setIsLoading(false)
-      })
+      } catch (err) {
+        console.error('[AuthContext] Init error:', err)
+        if (mounted) {
+          setIsLoading(false)
+        }
+      }
+    }
 
-    // 超时保护：5秒后强制结束加载
-    const timeout = setTimeout(() => {
-      setIsLoading(false)
-    }, 5000)
+    init()
 
     // 监听 auth 状态变化
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event: AuthChangeEvent, session: Session | null) => {
+        console.log('[AuthContext] Auth state changed:', _event, session?.user?.id)
+        if (!mounted) return
+
         setUser(session?.user ?? null)
         if (session?.user) {
           await loadProfile(session.user.id)
@@ -63,8 +80,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     )
 
     return () => {
+      mounted = false
       subscription.unsubscribe()
-      clearTimeout(timeout)
     }
   }, [])
 
