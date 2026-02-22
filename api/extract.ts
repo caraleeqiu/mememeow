@@ -6,7 +6,7 @@ import ytdl from '@distube/ytdl-core'
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ''
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || ''
 
-const API_VERSION = 'v10-fast-lang-detect'
+const API_VERSION = 'v11-tiktok-lang-check'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   console.log('[extract] API Version:', API_VERSION)
@@ -141,65 +141,11 @@ async function extractTikTok(url: string) {
       throw new Error(`文件太大 (${sizeMB.toFixed(1)}MB)，请选择较短的视频（约30秒以内）`)
     }
 
-    // Step 3: 使用 Gemini 转写
+    // Step 3: 使用 Gemini 转写（含语言检测）
     console.log('[tiktok] Step 3: Transcribing with Gemini...')
     const mimeType = isAudio ? 'audio/mpeg' : 'video/mp4'
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`
-
-    const geminiResponse = await fetchWithTimeout(geminiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [{
-          parts: [
-            {
-              text: `Transcribe this audio/video to English text.
-Rules:
-1. Output ONLY the transcription, no explanations
-2. Split into sentences (one per line)
-3. Fix any grammar or punctuation
-4. If not in English, translate to English
-5. Remove filler words like "um", "uh", "like"
-6. Each sentence should be 10-150 characters`
-            },
-            {
-              inline_data: {
-                mime_type: mimeType,
-                data: mediaBase64
-              }
-            }
-          ]
-        }],
-        generationConfig: {
-          temperature: 0.1,
-          maxOutputTokens: 4096,
-        }
-      }),
-    }, 60000) // 60 second timeout for Gemini
-
-    if (!geminiResponse.ok) {
-      const errorData = await geminiResponse.text()
-      console.error('[tiktok] Gemini error:', geminiResponse.status, errorData)
-      // 解析错误信息
-      let errorMsg = 'Gemini 转写失败'
-      try {
-        const errorJson = JSON.parse(errorData)
-        if (errorJson.error?.message) {
-          errorMsg = `Gemini: ${errorJson.error.message}`
-        }
-      } catch {}
-      throw new Error(errorMsg)
-    }
-
-    const geminiData = await geminiResponse.json()
-    const transcription = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || ''
+    const transcription = await transcribeWithGemini(mediaBase64, mimeType)
     console.log('[tiktok] Transcription length:', transcription.length)
-
-    if (!transcription) {
-      throw new Error('无法识别视频内容')
-    }
 
     // Step 4: 解析句子
     const sentences = transcription
