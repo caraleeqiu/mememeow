@@ -155,6 +155,16 @@
   margin: 0;
 }
 
+.login__success {
+  color: #27ae60;
+  font-size: 14px;
+  text-align: center;
+  margin: 0;
+  padding: 12px;
+  background: #e8f8f0;
+  border-radius: 8px;
+}
+
 .login__toggle {
   margin-top: 16px;
   background: none;

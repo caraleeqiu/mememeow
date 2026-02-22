@@ -7,6 +7,7 @@ export function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
   const [isLoading, setIsLoading] = useState(false)
 
   const { login, register, loginWithGoogle } = useAuth()
@@ -14,6 +15,7 @@ export function Login() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    setSuccess('')
     setIsLoading(true)
 
     try {
@@ -21,6 +23,7 @@ export function Login() {
         await login(email, password)
       } else {
         await register(email, password)
+        setSuccess('注册成功！请查看邮箱点击验证链接（可能在垃圾箱）')
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'An error occurred')
@@ -44,7 +47,7 @@ export function Login() {
     <div className="login">
       <div className="login__cat">
         <img
-          src="/carrot-cat.jpg"
+          src="/cat.jpg"
           alt="萝卜猫"
           className="login__cat-avatar"
         />
@@ -94,6 +97,7 @@ export function Login() {
         />
 
         {error && <p className="login__error">{error}</p>}
+        {success && <p className="login__success">{success}</p>}
 
         <button type="submit" className="login__btn" disabled={isLoading}>
           {isLoading ? '加载中...' : isLogin ? '登录' : '注册'}
