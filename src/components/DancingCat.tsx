@@ -11,19 +11,19 @@ interface DancingCatProps {
 
 const MUSIC_TRACKS: Record<MusicStyle, { url: string; name: string }> = {
   disco: {
-    url: 'https://cdn.pixabay.com/audio/2022/10/25/audio_946bc3eb44.mp3',
+    url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3',
     name: '🕺 Disco'
   },
   chill: {
-    url: 'https://cdn.pixabay.com/audio/2022/05/27/audio_1808fbf07a.mp3',
+    url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3',
     name: '😌 Chill'
   },
   edm: {
-    url: 'https://cdn.pixabay.com/audio/2022/03/10/audio_c4b035a6ac.mp3',
+    url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3',
     name: '🎧 EDM'
   },
   cute: {
-    url: 'https://cdn.pixabay.com/audio/2021/11/25/audio_91b32e02f9.mp3',
+    url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3',
     name: '🐱 可爱'
   }
 }
