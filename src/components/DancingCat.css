@@ -1,149 +1,212 @@
-.dancing-cat {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 20px;
-  padding: 40px;
+/* 全屏跳舞模式 */
+.dancing-cat-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  overflow: hidden;
+  background: linear-gradient(135deg, #1a1a2e, #16213e, #0f0f23);
 }
 
-.dancing-cat__stage {
-  position: relative;
-  width: 300px;
-  height: 300px;
-  background: linear-gradient(135deg, #1a1a2e, #16213e);
-  border-radius: 50%;
+/* 迪斯科背景 */
+.disco-bg {
+  position: absolute;
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
 }
 
-/* 迪斯科灯光 */
-.dancing-cat__lights {
+.disco-ball {
   position: absolute;
-  inset: 0;
-  pointer-events: none;
+  top: 5%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 80px;
+  height: 80px;
+  background: radial-gradient(circle at 30% 30%, #fff, #888, #444);
+  border-radius: 50%;
+  box-shadow:
+    0 0 60px rgba(255, 255, 255, 0.5),
+    inset 0 0 30px rgba(0, 0, 0, 0.3);
+  animation: spin 4s linear infinite;
 }
 
-.dancing-cat__light {
+@keyframes spin {
+  from { transform: translateX(-50%) rotateY(0deg); }
+  to { transform: translateX(-50%) rotateY(360deg); }
+}
+
+.disco-ray {
   position: absolute;
-  width: 100%;
-  height: 100%;
+  top: 10%;
+  left: 50%;
+  width: 4px;
+  height: 150vh;
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 107, 107, 0.8),
+    rgba(78, 205, 196, 0.6),
+    rgba(255, 230, 109, 0.4),
+    transparent
+  );
+  transform-origin: top center;
+  animation: rayPulse 1.5s ease-in-out infinite;
   opacity: 0.3;
-  mix-blend-mode: screen;
 }
 
-.dancing-cat__light--1 {
-  background: radial-gradient(circle at 30% 30%, #ff6b6b 0%, transparent 50%);
-  animation: disco1 2s ease-in-out infinite;
+@keyframes rayPulse {
+  0%, 100% { opacity: 0.2; }
+  50% { opacity: 0.5; }
 }
 
-.dancing-cat__light--2 {
-  background: radial-gradient(circle at 70% 30%, #4ecdc4 0%, transparent 50%);
-  animation: disco2 2s ease-in-out infinite 0.5s;
+/* 乱跳的猫 */
+.dancing-cat-wild {
+  position: absolute;
+  transition: all 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  z-index: 100;
 }
 
-.dancing-cat__light--3 {
-  background: radial-gradient(circle at 50% 70%, #ffe66d 0%, transparent 50%);
-  animation: disco3 2s ease-in-out infinite 1s;
-}
-
-@keyframes disco1 {
-  0%, 100% { transform: translate(0, 0); }
-  50% { transform: translate(20px, -20px); }
-}
-
-@keyframes disco2 {
-  0%, 100% { transform: translate(0, 0); }
-  50% { transform: translate(-20px, 20px); }
-}
-
-@keyframes disco3 {
-  0%, 100% { transform: translate(0, 0); }
-  50% { transform: translate(10px, -10px); }
-}
-
-/* 跳舞的猫 */
-.dancing-cat__cat {
-  position: relative;
-  z-index: 10;
-  animation: dance 0.4s ease infinite;
-}
-
-.dancing-cat__image {
-  width: 180px;
-  height: 180px;
+.dancing-cat-wild__image {
+  width: 150px;
+  height: 150px;
   object-fit: cover;
   border-radius: 50%;
-  border: 4px solid #FF6B35;
+  border: 5px solid #FF6B35;
+  box-shadow:
+    0 0 30px rgba(255, 107, 53, 0.6),
+    0 0 60px rgba(255, 107, 53, 0.3);
+  animation: catBounce 0.3s ease infinite;
 }
 
-@keyframes dance {
-  0%, 100% { transform: rotate(-8deg) translateY(0); }
-  25% { transform: rotate(8deg) translateY(-15px); }
-  50% { transform: rotate(-8deg) translateY(0); }
-  75% { transform: rotate(8deg) translateY(-15px); }
+@keyframes catBounce {
+  0%, 100% { transform: scaleY(1) scaleX(1); }
+  50% { transform: scaleY(0.9) scaleX(1.1); }
 }
 
-/* 音符 */
-.dancing-cat__notes {
+.dancing-cat-wild__emoji {
+  position: absolute;
+  top: -30px;
+  right: -20px;
+  font-size: 40px;
+  animation: emojiPop 0.8s ease infinite;
+}
+
+@keyframes emojiPop {
+  0%, 100% { transform: scale(1) rotate(0deg); }
+  50% { transform: scale(1.3) rotate(15deg); }
+}
+
+/* 飘浮的东西 */
+.floating-stuff {
   position: absolute;
   inset: 0;
   pointer-events: none;
 }
 
-.dancing-cat__note {
+.floating-item {
   position: absolute;
-  bottom: 30%;
-  font-size: 28px;
-  color: white;
-  animation: floatNote 2s ease-in-out infinite;
-  text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+  bottom: -50px;
+  animation: floatUp 3s ease-in-out infinite;
+  text-shadow: 0 0 20px rgba(255, 255, 255, 0.8);
 }
 
-@keyframes floatNote {
+@keyframes floatUp {
   0% {
-    transform: translateY(0) rotate(0deg);
+    transform: translateY(0) rotate(0deg) scale(1);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
     opacity: 1;
   }
   100% {
-    transform: translateY(-100px) rotate(20deg);
+    transform: translateY(-100vh) rotate(360deg) scale(0.5);
     opacity: 0;
   }
 }
 
-/* 倒计时 */
-.dancing-cat__timer {
+/* 底部 UI */
+.dancing-cat-ui {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 30px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.8), transparent);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 15px;
 }
 
-.dancing-cat__timer-text {
-  font-size: 42px;
+.dancing-cat-ui__message {
+  font-size: 28px;
+  font-weight: bold;
+  color: white;
+  text-shadow: 0 0 20px rgba(255, 107, 53, 0.8);
+  animation: textPulse 0.5s ease infinite;
+}
+
+@keyframes textPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+.dancing-cat-ui__timer {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.dancing-cat-ui__time {
+  font-size: 36px;
   font-weight: bold;
   color: #FF6B35;
+  min-width: 60px;
+  text-align: center;
 }
 
-.dancing-cat__timer-bar {
-  width: 220px;
-  height: 10px;
-  background: #eee;
-  border-radius: 5px;
+.dancing-cat-ui__bar {
+  width: 200px;
+  height: 12px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
   overflow: hidden;
 }
 
-.dancing-cat__timer-fill {
+.dancing-cat-ui__fill {
   height: 100%;
-  background: linear-gradient(90deg, #FF6B35, #FF8C5A);
-  border-radius: 5px;
+  background: linear-gradient(90deg, #FF6B35, #FF8C5A, #FFB347);
+  border-radius: 6px;
   transition: width 1s linear;
+  box-shadow: 0 0 10px rgba(255, 107, 53, 0.8);
 }
 
-.dancing-cat__message {
-  font-size: 22px;
-  color: #666;
-  margin: 0;
-  font-weight: 500;
+/* 彩虹边框效果 */
+.dancing-cat-fullscreen::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 8px solid transparent;
+  background: linear-gradient(45deg,
+    #ff6b6b, #feca57, #48dbfb, #ff9ff3, #54a0ff, #5f27cd
+  ) border-box;
+  -webkit-mask:
+    linear-gradient(#fff 0 0) padding-box,
+    linear-gradient(#fff 0 0);
+  mask:
+    linear-gradient(#fff 0 0) padding-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: borderRainbow 2s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes borderRainbow {
+  0% { filter: hue-rotate(0deg); }
+  100% { filter: hue-rotate(360deg); }
 }

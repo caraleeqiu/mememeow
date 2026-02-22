@@ -8,14 +8,52 @@ interface DancingCatProps {
 
 export function DancingCat({ duration = 15, onComplete }: DancingCatProps) {
   const [timeLeft, setTimeLeft] = useState(duration)
+  const [position, setPosition] = useState({ x: 50, y: 50 })
+  const [rotation, setRotation] = useState(0)
+  const [scale, setScale] = useState(1)
+  const [danceMove, setDanceMove] = useState(0)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
   const onCompleteRef = useRef(onComplete)
   const isMountedRef = useRef(true)
 
-  // 保持 onComplete 引用最新，但不触发 effect 重新运行
   useEffect(() => {
     onCompleteRef.current = onComplete
   }, [onComplete])
 
+  // 播放音乐
+  useEffect(() => {
+    // 使用免费音乐 URL
+    audioRef.current = new Audio('https://assets.mixkit.co/music/preview/mixkit-tech-house-vibes-130.mp3')
+    audioRef.current.volume = 0.5
+    audioRef.current.loop = true
+    audioRef.current.play().catch(() => {
+      // 自动播放可能被阻止，忽略错误
+    })
+
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause()
+        audioRef.current = null
+      }
+    }
+  }, [])
+
+  // 随机移动
+  useEffect(() => {
+    const moveInterval = setInterval(() => {
+      setPosition({
+        x: 15 + Math.random() * 70,
+        y: 15 + Math.random() * 70,
+      })
+      setRotation((Math.random() - 0.5) * 60)
+      setScale(0.8 + Math.random() * 0.6)
+      setDanceMove(m => (m + 1) % 4)
+    }, 800)
+
+    return () => clearInterval(moveInterval)
+  }, [])
+
+  // 倒计时
   useEffect(() => {
     isMountedRef.current = true
 
@@ -23,7 +61,6 @@ export function DancingCat({ duration = 15, onComplete }: DancingCatProps) {
       setTimeLeft(t => {
         if (t <= 1) {
           clearInterval(timer)
-          // 使用 setTimeout 确保状态更新完成后再调用
           setTimeout(() => {
             if (isMountedRef.current) {
               onCompleteRef.current()
@@ -39,58 +76,79 @@ export function DancingCat({ duration = 15, onComplete }: DancingCatProps) {
       isMountedRef.current = false
       clearInterval(timer)
     }
-  }, []) // 空依赖，只在挂载时运行
+  }, [])
 
   const progressPercentage = (timeLeft / duration) * 100
 
+  const danceEmojis = ['💃', '🕺', '🩰', '🎤']
+  const currentEmoji = danceEmojis[danceMove]
+
   return (
-    <div className="dancing-cat">
-      <div className="dancing-cat__stage">
-        {/* 迪斯科灯光 */}
-        <div className="dancing-cat__lights">
-          <div className="dancing-cat__light dancing-cat__light--1" />
-          <div className="dancing-cat__light dancing-cat__light--2" />
-          <div className="dancing-cat__light dancing-cat__light--3" />
-        </div>
-
-        {/* 跳舞的猫 */}
-        <div className="dancing-cat__cat">
-          <img
-            src="/carrot-cat.jpg"
-            alt="萝卜猫跳舞"
-            className="dancing-cat__image"
-          />
-        </div>
-
-        {/* 音符特效 */}
-        <div className="dancing-cat__notes">
-          {['♪', '♫', '♬', '♩'].map((note, i) => (
-            <span
-              key={i}
-              className="dancing-cat__note"
-              style={{
-                left: `${20 + i * 20}%`,
-                animationDelay: `${i * 0.2}s`
-              }}
-            >
-              {note}
-            </span>
-          ))}
-        </div>
-      </div>
-
-      {/* 倒计时 */}
-      <div className="dancing-cat__timer">
-        <span className="dancing-cat__timer-text">{timeLeft}s</span>
-        <div className="dancing-cat__timer-bar">
+    <div className="dancing-cat-fullscreen">
+      {/* 迪斯科背景 */}
+      <div className="disco-bg">
+        <div className="disco-ball" />
+        {[...Array(20)].map((_, i) => (
           <div
-            className="dancing-cat__timer-fill"
-            style={{ width: `${progressPercentage}%` }}
+            key={i}
+            className="disco-ray"
+            style={{
+              transform: `rotate(${i * 18}deg)`,
+              animationDelay: `${i * 0.1}s`,
+            }}
           />
-        </div>
+        ))}
       </div>
 
-      <p className="dancing-cat__message">萝卜猫正在跳舞!</p>
+      {/* 乱跳的猫 */}
+      <div
+        className="dancing-cat-wild"
+        style={{
+          left: `${position.x}%`,
+          top: `${position.y}%`,
+          transform: `translate(-50%, -50%) rotate(${rotation}deg) scale(${scale})`,
+        }}
+      >
+        <img
+          src="/carrot-cat.jpg"
+          alt="萝卜猫跳舞"
+          className="dancing-cat-wild__image"
+        />
+        <span className="dancing-cat-wild__emoji">{currentEmoji}</span>
+      </div>
+
+      {/* 飘浮的音符和萝卜 */}
+      <div className="floating-stuff">
+        {['♪', '♫', '♬', '🥕', '✨', '🎵', '💫', '🥕'].map((item, i) => (
+          <span
+            key={i}
+            className="floating-item"
+            style={{
+              left: `${10 + i * 12}%`,
+              animationDelay: `${i * 0.3}s`,
+              fontSize: `${24 + Math.random() * 20}px`,
+            }}
+          >
+            {item}
+          </span>
+        ))}
+      </div>
+
+      {/* 底部 UI */}
+      <div className="dancing-cat-ui">
+        <div className="dancing-cat-ui__message">
+          🎉 萝卜猫正在跳舞！{currentEmoji}
+        </div>
+        <div className="dancing-cat-ui__timer">
+          <span className="dancing-cat-ui__time">{timeLeft}s</span>
+          <div className="dancing-cat-ui__bar">
+            <div
+              className="dancing-cat-ui__fill"
+              style={{ width: `${progressPercentage}%` }}
+            />
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
