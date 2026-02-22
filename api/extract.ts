@@ -98,31 +98,41 @@ async function extractTikTok(url: string) {
     }
 
     const rapidData = await rapidResponse.json()
-    console.log('[tiktok] RapidAPI response:', JSON.stringify(rapidData).slice(0, 200))
+    console.log('[tiktok] RapidAPI response keys:', Object.keys(rapidData))
 
-    // 获取音频或视频下载链接
-    const downloadUrl = rapidData.downloadUrl || rapidData.audioUrl || rapidData.videoUrl
+    // 优先获取音频链接（更小），其次是视频
+    const audioUrl = rapidData.audioUrl || rapidData.audio || rapidData.music
+    const videoUrl = rapidData.downloadUrl || rapidData.videoUrl || rapidData.video || rapidData.play
+    const downloadUrl = audioUrl || videoUrl
+    const isAudio = !!audioUrl
+
+    console.log('[tiktok] Using:', isAudio ? 'audio' : 'video', 'URL')
+
     if (!downloadUrl) {
-      throw new Error('无法获取视频下载链接')
+      console.error('[tiktok] No download URL found in:', JSON.stringify(rapidData).slice(0, 500))
+      throw new Error('无法获取下载链接')
     }
 
-    // Step 2: 下载音频/视频
+    // Step 2: 下载媒体
     console.log('[tiktok] Step 2: Downloading media...')
-    const mediaResponse = await fetchWithTimeout(downloadUrl, {}, 30000)
+    const mediaResponse = await fetchWithTimeout(downloadUrl, {}, 60000) // 60秒超时
     if (!mediaResponse.ok) {
-      throw new Error('视频下载失败')
+      throw new Error('媒体下载失败')
     }
 
     const mediaBuffer = await mediaResponse.arrayBuffer()
     const mediaBase64 = Buffer.from(mediaBuffer).toString('base64')
-    console.log('[tiktok] Media size:', Math.round(mediaBase64.length / 1024), 'KB')
+    const sizeMB = mediaBase64.length / 1024 / 1024
+    console.log('[tiktok] Media size:', sizeMB.toFixed(2), 'MB')
 
-    if (mediaBase64.length > 20 * 1024 * 1024) {
-      throw new Error('视频太长，请选择较短的视频（建议1分钟以内）')
+    // Gemini 限制约 20MB
+    if (sizeMB > 20) {
+      throw new Error(`文件太大 (${sizeMB.toFixed(1)}MB)，请选择较短的视频`)
     }
 
     // Step 3: 使用 Gemini 转写
     console.log('[tiktok] Step 3: Transcribing with Gemini...')
+    const mimeType = isAudio ? 'audio/mpeg' : 'video/mp4'
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`
 
     const geminiResponse = await fetchWithTimeout(geminiUrl, {
@@ -145,7 +155,7 @@ Rules:
             },
             {
               inline_data: {
-                mime_type: 'video/mp4',
+                mime_type: mimeType,
                 data: mediaBase64
               }
             }
