@@ -11,7 +11,7 @@ function AppContent() {
     return (
       <div className="app-loading">
         <div className="app-loading__cat">
-          <img src="/carrot-cat.jpg" alt="萝卜猫" className="app-loading__image" />
+          <img src="/cat.jpg" alt="萝卜猫" className="app-loading__image" />
         </div>
         <p>加载中...</p>
       </div>

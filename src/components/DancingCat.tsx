@@ -110,7 +110,7 @@ export function DancingCat({ duration = 15, onComplete }: DancingCatProps) {
         }}
       >
         <img
-          src="/carrot-cat.jpg"
+          src="/cat.jpg"
           alt="萝卜猫跳舞"
           className="dancing-cat-wild__image"
         />

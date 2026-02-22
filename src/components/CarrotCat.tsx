@@ -66,7 +66,7 @@ export function CarrotCat({ mood, message, onHighFive, carrots = 0 }: CarrotCatP
 
         {/* 萝卜猫本体 */}
         <img
-          src="/carrot-cat.jpg"
+          src="/cat.jpg"
           alt="萝卜猫"
           className="carrot-cat__image"
         />
