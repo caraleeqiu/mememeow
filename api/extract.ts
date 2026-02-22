@@ -300,54 +300,91 @@ async function extractYouTubeWithGemini(videoId: string) {
   let audioBase64 = ''
   let title = 'YouTube Video'
 
-  // 方法1: 尝试 ytdl-core
+  // 方法1: 尝试 RapidAPI YouTube 下载
   try {
-    console.log('[youtube-gemini] Trying ytdl-core...')
-    const info = await ytdl.getInfo(youtubeUrl)
-    title = info.videoDetails.title
-    console.log('[youtube-gemini] Video title:', title)
+    console.log('[youtube-gemini] Trying RapidAPI...')
+    const rapidResponse = await fetchWithTimeout(
+      `https://youtube-mp3-audio-video-downloader.p.rapidapi.com/download?url=${encodeURIComponent(youtubeUrl)}&format=mp3`,
+      {
+        method: 'GET',
+        headers: {
+          'x-rapidapi-key': RAPIDAPI_KEY,
+          'x-rapidapi-host': 'youtube-mp3-audio-video-downloader.p.rapidapi.com',
+        },
+      },
+      20000
+    )
 
-    const audioFormats = ytdl.filterFormats(info.formats, 'audioonly')
-    if (audioFormats.length === 0) {
-      throw new Error('No audio format found')
+    if (rapidResponse.ok) {
+      const rapidData = await rapidResponse.json()
+      console.log('[youtube-gemini] RapidAPI response:', JSON.stringify(rapidData).slice(0, 200))
+
+      const downloadUrl = rapidData.link || rapidData.url || rapidData.downloadUrl
+      if (downloadUrl) {
+        title = rapidData.title || 'YouTube Video'
+        const audioResponse = await fetchWithTimeout(downloadUrl, {}, 30000)
+        if (audioResponse.ok) {
+          const audioBuffer = await audioResponse.arrayBuffer()
+          audioBase64 = Buffer.from(audioBuffer).toString('base64')
+          console.log('[youtube-gemini] RapidAPI success, size:', Math.round(audioBase64.length / 1024), 'KB')
+        }
+      }
     }
+  } catch (rapidError: any) {
+    console.log('[youtube-gemini] RapidAPI failed:', rapidError.message)
+  }
 
-    // 选择最小的音频格式
-    const format = audioFormats.sort((a, b) =>
-      (Number(a.contentLength) || 0) - (Number(b.contentLength) || 0)
-    )[0]
-    console.log('[youtube-gemini] Audio format:', format.mimeType)
+  // 方法2: 尝试 ytdl-core
+  if (!audioBase64) {
+    try {
+      console.log('[youtube-gemini] Trying ytdl-core...')
+      const info = await ytdl.getInfo(youtubeUrl)
+      title = info.videoDetails.title
+      console.log('[youtube-gemini] Video title:', title)
 
-    const chunks: Buffer[] = []
-    const stream = ytdl(youtubeUrl, { format })
+      const audioFormats = ytdl.filterFormats(info.formats, 'audioonly')
+      if (audioFormats.length === 0) {
+        throw new Error('No audio format found')
+      }
 
-    await new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('Download timeout')), 30000)
-      stream.on('data', (chunk: Buffer) => chunks.push(chunk))
-      stream.on('end', () => { clearTimeout(timeout); resolve() })
-      stream.on('error', (err) => { clearTimeout(timeout); reject(err) })
-    })
+      const format = audioFormats.sort((a, b) =>
+        (Number(a.contentLength) || 0) - (Number(b.contentLength) || 0)
+      )[0]
+      console.log('[youtube-gemini] Audio format:', format.mimeType)
 
-    audioBase64 = Buffer.concat(chunks).toString('base64')
-    console.log('[youtube-gemini] ytdl-core success, size:', Math.round(audioBase64.length / 1024), 'KB')
-  } catch (ytdlError: any) {
-    console.log('[youtube-gemini] ytdl-core failed:', ytdlError.message)
+      const chunks: Buffer[] = []
+      const stream = ytdl(youtubeUrl, { format })
 
-    // 方法2: 尝试 cobalt API
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('Download timeout')), 30000)
+        stream.on('data', (chunk: Buffer) => chunks.push(chunk))
+        stream.on('end', () => { clearTimeout(timeout); resolve() })
+        stream.on('error', (err) => { clearTimeout(timeout); reject(err) })
+      })
+
+      audioBase64 = Buffer.concat(chunks).toString('base64')
+      console.log('[youtube-gemini] ytdl-core success, size:', Math.round(audioBase64.length / 1024), 'KB')
+    } catch (ytdlError: any) {
+      console.log('[youtube-gemini] ytdl-core failed:', ytdlError.message)
+    }
+  }
+
+  // 方法3: 尝试 cobalt API
+  if (!audioBase64) {
     console.log('[youtube-gemini] Trying cobalt API...')
     const audioUrl = await getAudioUrl(youtubeUrl)
-    if (!audioUrl) {
-      throw new Error('无法下载视频音频（ytdl-core 和 cobalt 均失败）')
+    if (audioUrl) {
+      const audioResponse = await fetchWithTimeout(audioUrl, {}, 30000)
+      if (audioResponse.ok) {
+        const audioBuffer = await audioResponse.arrayBuffer()
+        audioBase64 = Buffer.from(audioBuffer).toString('base64')
+        console.log('[youtube-gemini] cobalt success, size:', Math.round(audioBase64.length / 1024), 'KB')
+      }
     }
+  }
 
-    const audioResponse = await fetchWithTimeout(audioUrl, {}, 30000)
-    if (!audioResponse.ok) {
-      throw new Error('音频下载失败')
-    }
-
-    const audioBuffer = await audioResponse.arrayBuffer()
-    audioBase64 = Buffer.from(audioBuffer).toString('base64')
-    console.log('[youtube-gemini] cobalt success, size:', Math.round(audioBase64.length / 1024), 'KB')
+  if (!audioBase64) {
+    throw new Error('无法下载视频音频（所有方法均失败：RapidAPI、ytdl-core、cobalt）')
   }
 
   // 检查大小限制
