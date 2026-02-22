@@ -4,12 +4,16 @@
 
 ## 功能特点
 
-- 📹 支持 YouTube、TikTok、Instagram 视频内容提取
+- 📹 支持 YouTube / YouTube Shorts / TikTok 视频内容提取
+- 📄 支持上传 PDF 和 TXT 文件
+- ✏️ 支持直接粘贴英文文字
 - 🎤 实时语音识别跟读练习
+- 🔊 TTS 示范朗读（卡拉OK式单词高亮）
 - 🥕 萝卜积分激励系统
-- 💃 集满 10 萝卜看猫跳舞
+- 💃 集满 10 萝卜看猫跳舞（可选音乐风格）
 - 📝 错题本功能
 - 📊 学习统计
+- 🌍 自动检测语言（仅支持英文内容）
 
 ## 技术栈
 
@@ -18,7 +22,9 @@
 - **数据库**: Supabase (PostgreSQL)
 - **认证**: Supabase Auth (Google OAuth)
 - **语音识别**: Web Speech API
+- **语音合成**: Web Speech API (TTS)
 - **视频转写**: Google Gemini API
+- **视频下载**: RapidAPI (YouTube/TikTok)
 
 ## 开发设置
 
@@ -47,15 +53,11 @@ RAPIDAPI_KEY=your_rapidapi_key
 
 ### 3. 配置 Supabase
 
-在 Supabase SQL Editor 中执行迁移文件：
+在 Supabase SQL Editor 中执行：
 
-```bash
-# 1. 创建 RPC 函数（原子操作）
-supabase/migrations/001_add_rpc_functions.sql
-
-# 2. 启用 RLS 策略（安全）
-supabase/migrations/002_add_rls_policies.sql
-```
+1. `supabase-schema.sql` - 创建表结构
+2. `supabase/migrations/001_add_rpc_functions.sql` - RPC 函数
+3. `supabase/migrations/002_add_rls_policies.sql` - RLS 策略
 
 ### 4. 启动开发服务器
 
@@ -71,43 +73,56 @@ npm run dev
 2. 配置环境变量
 3. 部署
 
+线上地址: https://mememeow.vercel.app
+
 ## 项目结构
 
 ```
 mememeow/
 ├── api/                    # Vercel Serverless Functions
-│   └── extract.ts          # 视频内容提取 API
+│   ├── extract.ts          # 视频内容提取 API
+│   └── extract-pdf.ts      # PDF 文本提取 API
 ├── src/
 │   ├── api/               # API 客户端
 │   │   └── client.ts      # Supabase API 封装
 │   ├── components/        # React 组件
 │   │   ├── CarrotCat.tsx  # 萝卜猫组件
-│   │   ├── DancingCat.tsx # 跳舞动画
-│   │   ├── LinkInput.tsx  # 链接输入
-│   │   └── ReadingArea.tsx # 跟读区域
+│   │   ├── DancingCat.tsx # 跳舞动画（含音乐风格选择）
+│   │   ├── LinkInput.tsx  # 链接/文件输入
+│   │   └── ReadingArea.tsx # 跟读区域（含TTS示范）
 │   ├── context/           # React Context
 │   │   └── AuthContext.tsx # 认证上下文
-│   ├── hooks/             # 自定义 Hooks
-│   │   └── useSpeechRecognition.ts
 │   ├── pages/             # 页面组件
 │   │   ├── Home.tsx
 │   │   └── Login.tsx
 │   ├── types/             # TypeScript 类型
 │   └── lib/               # 工具库
 │       └── supabase.ts
+├── public/
+│   └── cat.jpg            # 萝卜猫图片
 ├── supabase/
 │   └── migrations/        # 数据库迁移
 └── vercel.json            # Vercel 配置
 ```
 
-## 匹配算法
+## 核心功能
 
-跟读匹配使用改进的算法：
+### 视频提取
+- YouTube: 使用 RapidAPI 下载音频，Gemini 转写
+- TikTok: 使用 RapidAPI 下载视频，Gemini 转写
+- 自动检测语言，非英文内容会提示用户
 
-1. **Levenshtein 距离** - 处理拼写相似的词
-2. **词序敏感** - 位置正确的词获得额外分数
-3. **长度惩罚** - 过长或过短的回答会扣分
-4. **阈值**: 80% 匹配度算通过
+### 跟读练习
+- Web Speech API 实时语音识别
+- 改进的匹配算法（Levenshtein距离 + 词序）
+- 80% 匹配度通过
+- TTS 示范朗读，卡拉OK式单词高亮
+
+### 萝卜猫跳舞
+- 10 萝卜触发
+- 4 种音乐风格可选：Disco / EDM / Chill / 可爱
+- 全屏迪斯科灯光效果
+- 15秒跳舞时间
 
 ## 许可
 
