@@ -30,7 +30,6 @@ export function LinkInput({ onSubmit, onPaste, onFile, isLoading, onCancel, erro
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     console.log('[LinkInput] handleSubmit called, url:', url, 'isLoading:', isLoading)
-    alert('LinkInput handleSubmit: ' + url)
     if (!url.trim() || isLoading) {
       console.log('[LinkInput] Early return - empty url or loading')
       return

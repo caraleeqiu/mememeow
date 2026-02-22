@@ -34,7 +34,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const urlLower = url.toLowerCase()
 
-    // TikTok - 使用 RapidAPI 下载 + Gemini 转写
+    // TikTok - 使用原始 API
     if (urlLower.includes('tiktok.com')) {
       if (!RAPIDAPI_KEY) {
         return res.status(500).json({ error: 'RapidAPI key not configured' })
@@ -74,18 +74,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
 // Extract TikTok using RapidAPI + Gemini transcription
 async function extractTikTok(url: string) {
-  console.log('[tiktok] Extracting audio for:', url)
+  console.log('[tiktok] Extracting for:', url)
 
   try {
-    // Step 1: 使用 TikTok Scraper API 获取音频链接
-    console.log('[tiktok] Step 1: Getting audio URL from RapidAPI...')
+    // Step 1: 使用原始 TikTok Downloader API
+    console.log('[tiktok] Step 1: Getting download URL...')
     const rapidResponse = await fetchWithTimeout(
-      `https://tiktok-scrapper-videos-music-challenges-downloader.p.rapidapi.com/getVideo?videoUrl=${encodeURIComponent(url)}`,
+      `https://tiktok-video-downloader-api.p.rapidapi.com/media?videoUrl=${encodeURIComponent(url)}`,
       {
         method: 'GET',
         headers: {
           'x-rapidapi-key': RAPIDAPI_KEY,
-          'x-rapidapi-host': 'tiktok-scrapper-videos-music-challenges-downloader.p.rapidapi.com',
+          'x-rapidapi-host': 'tiktok-video-downloader-api.p.rapidapi.com',
         },
       },
       20000
@@ -98,15 +98,13 @@ async function extractTikTok(url: string) {
     }
 
     const rapidData = await rapidResponse.json()
-    console.log('[tiktok] RapidAPI response:', JSON.stringify(rapidData).slice(0, 300))
+    console.log('[tiktok] RapidAPI response:', JSON.stringify(rapidData).slice(0, 500))
 
-    // 优先获取音频/音乐链接
-    const audioUrl = rapidData.music || rapidData.musicUrl || rapidData.audio || rapidData.audioUrl
-    const videoUrl = rapidData.video || rapidData.videoUrl || rapidData.play || rapidData.downloadUrl
-    const downloadUrl = audioUrl || videoUrl
-    const isAudio = !!audioUrl
+    // 获取下载链接
+    const downloadUrl = rapidData.downloadUrl || rapidData.videoUrl || rapidData.play
+    const isAudio = false
 
-    console.log('[tiktok] Using:', isAudio ? 'audio' : 'video')
+    console.log('[tiktok] Got download URL')
 
     if (!downloadUrl) {
       console.error('[tiktok] No download URL found in:', JSON.stringify(rapidData).slice(0, 500))
@@ -125,9 +123,9 @@ async function extractTikTok(url: string) {
     const sizeMB = mediaBase64.length / 1024 / 1024
     console.log('[tiktok] Media size:', sizeMB.toFixed(2), 'MB')
 
-    // Gemini 限制约 20MB
-    if (sizeMB > 20) {
-      throw new Error(`文件太大 (${sizeMB.toFixed(1)}MB)，请选择较短的视频`)
+    // Gemini 支持最大约 100MB
+    if (sizeMB > 50) {
+      throw new Error(`文件太大 (${sizeMB.toFixed(1)}MB)，请选择较短的视频（约30秒以内）`)
     }
 
     // Step 3: 使用 Gemini 转写

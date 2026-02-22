@@ -108,6 +108,7 @@ export function Home() {
     }
   }
 
+  
   const handleRecord = async (
     sentenceIndex: number,
     sentenceText: string,
