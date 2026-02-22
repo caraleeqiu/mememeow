@@ -6,7 +6,7 @@ import ytdl from '@distube/ytdl-core'
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ''
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || ''
 
-const API_VERSION = 'v18-instagram-multipart'
+const API_VERSION = 'v19-instagram-try-all'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   console.log('[extract] API Version:', API_VERSION)
@@ -168,48 +168,78 @@ async function extractTikTok(url: string) {
   }
 }
 
-// Extract Instagram V2 - 正确的 multipart/form-data
+// Extract Instagram V2 - 尝试多种格式
 async function extractInstagramV2(url: string) {
   console.log('[instagram] Extracting for:', url)
 
   try {
-    // 构建 multipart/form-data boundary
-    const boundary = '----FormBoundary' + Math.random().toString(36).slice(2)
-    const body = `--${boundary}\r\nContent-Disposition: form-data; name="url"\r\n\r\n${url}\r\n--${boundary}--\r\n`
-
-    console.log('[instagram] Calling RapidAPI...')
-    const rapidResponse = await fetchWithTimeout(
-      'https://instagram-video-downloader13.p.rapidapi.com/index.php',
-      {
-        method: 'POST',
-        headers: {
-          'x-rapidapi-key': RAPIDAPI_KEY,
-          'x-rapidapi-host': 'instagram-video-downloader13.p.rapidapi.com',
-          'Content-Type': `multipart/form-data; boundary=${boundary}`,
-        },
-        body: body,
-      },
-      25000
-    )
-
-    const rapidText = await rapidResponse.text()
-    console.log('[instagram] RapidAPI status:', rapidResponse.status, 'response:', rapidText.slice(0, 500))
-
     let downloadUrl = ''
 
-    if (rapidResponse.ok) {
-      const rapidData = JSON.parse(rapidText)
+    // 方法1: JSON 格式
+    console.log('[instagram] Trying JSON format...')
+    try {
+      const jsonResponse = await fetchWithTimeout(
+        'https://instagram-video-downloader13.p.rapidapi.com/index.php',
+        {
+          method: 'POST',
+          headers: {
+            'x-rapidapi-key': RAPIDAPI_KEY,
+            'x-rapidapi-host': 'instagram-video-downloader13.p.rapidapi.com',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ url }),
+        },
+        20000
+      )
+      const jsonText = await jsonResponse.text()
+      console.log('[instagram] JSON response:', jsonResponse.status, jsonText.slice(0, 300))
 
-      // 响应格式: { status: "success", media: [{ type: "video", url: "..." }] }
-      if (rapidData.status === 'success' && rapidData.media && Array.isArray(rapidData.media)) {
-        const videoMedia = rapidData.media.find((m: any) => m.type === 'video')
-        downloadUrl = videoMedia?.url || rapidData.media[0]?.url || ''
+      if (jsonResponse.ok) {
+        const data = JSON.parse(jsonText)
+        if (data.status === 'success' && data.media) {
+          const video = data.media.find((m: any) => m.type === 'video')
+          downloadUrl = video?.url || data.media[0]?.url || ''
+        }
+      }
+    } catch (e: any) {
+      console.log('[instagram] JSON failed:', e.message)
+    }
+
+    // 方法2: URL encoded
+    if (!downloadUrl) {
+      console.log('[instagram] Trying URL encoded format...')
+      try {
+        const formResponse = await fetchWithTimeout(
+          'https://instagram-video-downloader13.p.rapidapi.com/index.php',
+          {
+            method: 'POST',
+            headers: {
+              'x-rapidapi-key': RAPIDAPI_KEY,
+              'x-rapidapi-host': 'instagram-video-downloader13.p.rapidapi.com',
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: `url=${encodeURIComponent(url)}`,
+          },
+          20000
+        )
+        const formText = await formResponse.text()
+        console.log('[instagram] Form response:', formResponse.status, formText.slice(0, 300))
+
+        if (formResponse.ok) {
+          const data = JSON.parse(formText)
+          if (data.status === 'success' && data.media) {
+            const video = data.media.find((m: any) => m.type === 'video')
+            downloadUrl = video?.url || data.media[0]?.url || ''
+          }
+        }
+      } catch (e: any) {
+        console.log('[instagram] Form failed:', e.message)
       }
     }
 
-    // 备用: cobalt
+    // 方法3: cobalt 备用
     if (!downloadUrl) {
-      console.log('[instagram] RapidAPI failed, trying cobalt...')
+      console.log('[instagram] Trying cobalt fallback...')
       downloadUrl = await getAudioUrl(url) || ''
     }
 
