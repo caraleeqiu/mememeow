@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY
+// Gemini API for audio transcription
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ''
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CORS headers
@@ -23,8 +24,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (!GEMINI_API_KEY) {
+    console.error('[extract] GEMINI_API_KEY is missing from env')
     return res.status(500).json({ error: 'Gemini API key not configured' })
   }
+  console.log('[extract] GEMINI_API_KEY found, length:', GEMINI_API_KEY.length)
 
   try {
     const urlLower = url.toLowerCase()
