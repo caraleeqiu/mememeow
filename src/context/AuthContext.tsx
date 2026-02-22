@@ -29,14 +29,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     // 获取当前 session
-    supabase.auth.getSession().then(({ data: { session } }: { data: { session: Session | null } }) => {
-      setUser(session?.user ?? null)
-      if (session?.user) {
-        loadProfile(session.user.id)
-      } else {
+    supabase.auth.getSession()
+      .then(({ data: { session } }: { data: { session: Session | null } }) => {
+        setUser(session?.user ?? null)
+        if (session?.user) {
+          loadProfile(session.user.id)
+        } else {
+          setIsLoading(false)
+        }
+      })
+      .catch((err: Error) => {
+        console.error('Failed to get session:', err)
         setIsLoading(false)
-      }
-    })
+      })
+
+    // 超时保护：5秒后强制结束加载
+    const timeout = setTimeout(() => {
+      setIsLoading(false)
+    }, 5000)
 
     // 监听 auth 状态变化
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -50,7 +60,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     )
 
-    return () => subscription.unsubscribe()
+    return () => {
+      subscription.unsubscribe()
+      clearTimeout(timeout)
+    }
   }, [])
 
   const loadProfile = async (userId: string) => {
