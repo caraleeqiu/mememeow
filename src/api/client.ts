@@ -103,11 +103,13 @@ export const content = {
 
     // 使用服务端 API 提取视频内容
     try {
+      console.log('[extract] Calling API...')
       const apiResponse = await fetchWithTimeout('/api/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url }),
-      }, 30000)
+      }, 90000) // 90秒超时
+      console.log('[extract] API response:', apiResponse.status)
 
       if (!apiResponse.ok) {
         const errorData = await apiResponse.json()

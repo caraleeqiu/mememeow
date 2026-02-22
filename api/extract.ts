@@ -63,13 +63,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
 // Extract audio and transcribe using Gemini
 async function extractWithGemini(url: string, platform: string) {
+  console.log('[extract] Step 1: Getting audio URL...')
+
   // Step 1: Get audio URL using cobalt.tools API
   const audioUrl = await getAudioUrl(url)
+  console.log('[extract] Audio URL:', audioUrl ? 'Got it' : 'Failed')
 
   if (!audioUrl) {
     throw new Error('无法获取视频音频，请检查链接是否正确')
   }
 
+  console.log('[extract] Step 2: Downloading audio...')
   // Step 2: Download audio
   const audioResponse = await fetch(audioUrl)
   if (!audioResponse.ok) {
@@ -78,12 +82,14 @@ async function extractWithGemini(url: string, platform: string) {
 
   const audioBuffer = await audioResponse.arrayBuffer()
   const audioBase64 = Buffer.from(audioBuffer).toString('base64')
+  console.log('[extract] Audio size:', Math.round(audioBase64.length / 1024), 'KB')
 
   // Check size (Gemini has limits)
   if (audioBase64.length > 20 * 1024 * 1024) { // ~15MB original
     throw new Error('视频太长，请选择较短的视频（建议3分钟以内）')
   }
 
+  console.log('[extract] Step 3: Sending to Gemini...')
   // Step 3: Send to Gemini for transcription
   const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`
 
@@ -120,6 +126,8 @@ Rules:
     }),
   })
 
+  console.log('[extract] Gemini response status:', geminiResponse.status)
+
   if (!geminiResponse.ok) {
     const errorData = await geminiResponse.text()
     console.error('Gemini error:', errorData)
@@ -128,6 +136,7 @@ Rules:
 
   const geminiData = await geminiResponse.json()
   const transcription = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || ''
+  console.log('[extract] Transcription length:', transcription.length)
 
   if (!transcription) {
     throw new Error('无法识别音频内容，可能没有语音')
