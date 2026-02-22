@@ -6,7 +6,7 @@ import ytdl from '@distube/ytdl-core'
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ''
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || ''
 
-const API_VERSION = 'v6-m4a-link'
+const API_VERSION = 'v7-instagram-x'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   console.log('[extract] API Version:', API_VERSION)
@@ -56,15 +56,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Instagram
     if (urlLower.includes('instagram.com')) {
-      const result = await extractWithGemini(url, 'instagram')
+      if (!RAPIDAPI_KEY) {
+        return res.status(500).json({ error: 'RapidAPI key not configured' })
+      }
+      const result = await extractInstagram(url)
       return res.status(200).json(result)
     }
 
     // Twitter/X
     if (urlLower.includes('twitter.com') || urlLower.includes('x.com')) {
-      return res.status(400).json({
-        error: 'Twitter/X 暂不支持语音转写，请直接粘贴文字内容',
-      })
+      if (!RAPIDAPI_KEY) {
+        return res.status(500).json({ error: 'RapidAPI key not configured' })
+      }
+      const result = await extractTwitter(url)
+      return res.status(200).json(result)
     }
 
     return res.status(400).json({ error: 'Unsupported platform' })
@@ -214,6 +219,236 @@ Rules:
     console.error('[tiktok] Error:', error.message, error.stack)
     throw new Error(`TikTok 提取失败: ${error.message}`)
   }
+}
+
+// Extract Instagram using RapidAPI + Gemini transcription
+async function extractInstagram(url: string) {
+  console.log('[instagram] Extracting for:', url)
+
+  try {
+    // 使用 Instagram downloader API
+    console.log('[instagram] Getting download URL...')
+    const rapidResponse = await fetchWithTimeout(
+      `https://instagram-downloader-download-instagram-videos-stories1.p.rapidapi.com/get-info-rapidapi`,
+      {
+        method: 'POST',
+        headers: {
+          'x-rapidapi-key': RAPIDAPI_KEY,
+          'x-rapidapi-host': 'instagram-downloader-download-instagram-videos-stories1.p.rapidapi.com',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ url }),
+      },
+      20000
+    )
+
+    const rapidText = await rapidResponse.text()
+    console.log('[instagram] RapidAPI status:', rapidResponse.status, 'response:', rapidText.slice(0, 300))
+
+    let downloadUrl = ''
+    let title = 'Instagram Video'
+
+    if (rapidResponse.ok) {
+      const rapidData = JSON.parse(rapidText)
+      // 尝试获取视频链接
+      downloadUrl = rapidData.download_url || rapidData.video_url || rapidData.url
+      if (rapidData.media && Array.isArray(rapidData.media)) {
+        const videoMedia = rapidData.media.find((m: any) => m.type === 'video')
+        downloadUrl = videoMedia?.url || rapidData.media[0]?.url
+      }
+      title = rapidData.title || rapidData.caption?.slice(0, 50) || 'Instagram Video'
+    }
+
+    // 备用方案：cobalt
+    if (!downloadUrl) {
+      console.log('[instagram] Trying cobalt fallback...')
+      downloadUrl = await getAudioUrl(url) || ''
+    }
+
+    if (!downloadUrl) {
+      throw new Error('无法获取 Instagram 视频')
+    }
+
+    // 下载视频
+    console.log('[instagram] Downloading media...')
+    const mediaResponse = await fetchWithTimeout(downloadUrl, {}, 60000)
+    if (!mediaResponse.ok) {
+      throw new Error('媒体下载失败')
+    }
+
+    const mediaBuffer = await mediaResponse.arrayBuffer()
+    const mediaBase64 = Buffer.from(mediaBuffer).toString('base64')
+    console.log('[instagram] Media size:', Math.round(mediaBase64.length / 1024 / 1024 * 100) / 100, 'MB')
+
+    if (mediaBase64.length > 50 * 1024 * 1024) {
+      throw new Error('视频太大，请选择较短的视频')
+    }
+
+    // Gemini 转写
+    console.log('[instagram] Transcribing with Gemini...')
+    const transcription = await transcribeWithGemini(mediaBase64, 'video/mp4')
+
+    const sentences = transcription
+      .split('\n')
+      .map((s: string) => s.trim())
+      .filter((s: string) => s.length >= 10 && s.length <= 200)
+      .slice(0, 50)
+
+    if (sentences.length === 0) {
+      throw new Error('未能提取到有效句子')
+    }
+
+    return {
+      title,
+      sentences,
+      platform: 'instagram',
+      type: 'video',
+    }
+  } catch (error: any) {
+    console.error('[instagram] Error:', error.message)
+    throw new Error(`Instagram 提取失败: ${error.message}`)
+  }
+}
+
+// Extract Twitter/X using RapidAPI + Gemini transcription
+async function extractTwitter(url: string) {
+  console.log('[twitter] Extracting for:', url)
+
+  try {
+    // 使用 Twitter downloader API
+    console.log('[twitter] Getting download URL...')
+    const rapidResponse = await fetchWithTimeout(
+      `https://twitter-downloader-download-twitter-videos.p.rapidapi.com/status`,
+      {
+        method: 'POST',
+        headers: {
+          'x-rapidapi-key': RAPIDAPI_KEY,
+          'x-rapidapi-host': 'twitter-downloader-download-twitter-videos.p.rapidapi.com',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ url }),
+      },
+      20000
+    )
+
+    const rapidText = await rapidResponse.text()
+    console.log('[twitter] RapidAPI status:', rapidResponse.status, 'response:', rapidText.slice(0, 300))
+
+    let downloadUrl = ''
+    let title = 'Twitter Video'
+
+    if (rapidResponse.ok) {
+      const rapidData = JSON.parse(rapidText)
+      // 尝试获取视频链接
+      if (rapidData.media?.video?.videoVariants) {
+        const variants = rapidData.media.video.videoVariants
+        const mp4Variant = variants.find((v: any) => v.content_type === 'video/mp4')
+        downloadUrl = mp4Variant?.url || variants[0]?.url
+      }
+      downloadUrl = downloadUrl || rapidData.download_url || rapidData.video_url || rapidData.url
+      title = rapidData.text?.slice(0, 50) || 'Twitter Video'
+    }
+
+    // 备用方案：cobalt
+    if (!downloadUrl) {
+      console.log('[twitter] Trying cobalt fallback...')
+      downloadUrl = await getAudioUrl(url) || ''
+    }
+
+    if (!downloadUrl) {
+      throw new Error('无法获取 Twitter 视频，请确保是包含视频的推文')
+    }
+
+    // 下载视频
+    console.log('[twitter] Downloading media...')
+    const mediaResponse = await fetchWithTimeout(downloadUrl, {}, 60000)
+    if (!mediaResponse.ok) {
+      throw new Error('媒体下载失败')
+    }
+
+    const mediaBuffer = await mediaResponse.arrayBuffer()
+    const mediaBase64 = Buffer.from(mediaBuffer).toString('base64')
+    console.log('[twitter] Media size:', Math.round(mediaBase64.length / 1024 / 1024 * 100) / 100, 'MB')
+
+    if (mediaBase64.length > 50 * 1024 * 1024) {
+      throw new Error('视频太大，请选择较短的视频')
+    }
+
+    // Gemini 转写
+    console.log('[twitter] Transcribing with Gemini...')
+    const transcription = await transcribeWithGemini(mediaBase64, 'video/mp4')
+
+    const sentences = transcription
+      .split('\n')
+      .map((s: string) => s.trim())
+      .filter((s: string) => s.length >= 10 && s.length <= 200)
+      .slice(0, 50)
+
+    if (sentences.length === 0) {
+      throw new Error('未能提取到有效句子')
+    }
+
+    return {
+      title,
+      sentences,
+      platform: 'twitter',
+      type: 'video',
+    }
+  } catch (error: any) {
+    console.error('[twitter] Error:', error.message)
+    throw new Error(`Twitter 提取失败: ${error.message}`)
+  }
+}
+
+// 通用 Gemini 转写函数
+async function transcribeWithGemini(mediaBase64: string, mimeType: string): Promise<string> {
+  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`
+
+  const geminiResponse = await fetchWithTimeout(geminiUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{
+        parts: [
+          {
+            text: `Transcribe this audio/video to English text.
+Rules:
+1. Output ONLY the transcription, no explanations
+2. Split into sentences (one per line)
+3. Fix any grammar or punctuation
+4. If not in English, translate to English
+5. Remove filler words like "um", "uh", "like"
+6. Each sentence should be 10-150 characters`
+          },
+          {
+            inline_data: {
+              mime_type: mimeType,
+              data: mediaBase64
+            }
+          }
+        ]
+      }],
+      generationConfig: {
+        temperature: 0.1,
+        maxOutputTokens: 4096,
+      }
+    }),
+  }, 60000)
+
+  if (!geminiResponse.ok) {
+    const errorData = await geminiResponse.text()
+    console.error('[gemini] Error:', errorData)
+    throw new Error('Gemini 转写失败')
+  }
+
+  const geminiData = await geminiResponse.json()
+  const transcription = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || ''
+
+  if (!transcription) {
+    throw new Error('无法识别视频内容')
+  }
+
+  return transcription
 }
 
 // Extract YouTube transcript - 先尝试字幕，失败则用 Gemini 转写
