@@ -142,9 +142,12 @@ function matchSpeech(original: string, spoken: string): { isMatch: boolean; scor
 
 export const content = {
   async paste(title: string, text: string): Promise<Content & { totalSentences: number }> {
+    console.log('[paste] Getting session...')
     const { data: { session } } = await supabase.auth.getSession()
+    console.log('[paste] Session:', session ? 'exists' : 'null')
     const user = session?.user
     if (!user) throw new Error('Not authenticated')
+    console.log('[paste] User ID:', user.id)
 
     const sentences = text
       .replace(/\s+/g, ' ')
@@ -157,6 +160,7 @@ export const content = {
       throw new Error('No valid sentences found. Make sure the text contains complete sentences.')
     }
 
+    console.log('[paste] Inserting to Supabase, sentences:', sentences.length)
     const { data, error } = await supabase
       .from('contents')
       .insert({

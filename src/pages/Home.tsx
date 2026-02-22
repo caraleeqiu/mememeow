@@ -86,11 +86,14 @@ export function Home() {
   }, [user?.id, loadContentList])
 
   const handlePasteText = useCallback(async (title: string, text: string) => {
+    console.log('[handlePasteText] Starting...', { title, text: text.slice(0, 50) })
     setIsLoading(true)
     setError('')
 
     try {
+      console.log('[handlePasteText] Calling content.paste...')
       const result = await content.paste(title, text)
+      console.log('[handlePasteText] Got result:', result)
       setCurrentContent(result as Content)
       setInitialProgress([])
       setView('reading')
