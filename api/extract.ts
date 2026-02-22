@@ -74,18 +74,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
 // Extract TikTok using RapidAPI + Gemini transcription
 async function extractTikTok(url: string) {
-  console.log('[tiktok] Extracting video for:', url)
+  console.log('[tiktok] Extracting audio for:', url)
 
   try {
-    // Step 1: 使用 RapidAPI 获取下载链接
-    console.log('[tiktok] Step 1: Getting download URL from RapidAPI...')
+    // Step 1: 使用 TikTok Scraper API 获取音频链接
+    console.log('[tiktok] Step 1: Getting audio URL from RapidAPI...')
     const rapidResponse = await fetchWithTimeout(
-      `https://tiktok-video-downloader-api.p.rapidapi.com/media?videoUrl=${encodeURIComponent(url)}`,
+      `https://tiktok-scrapper-videos-music-challenges-downloader.p.rapidapi.com/getVideo?videoUrl=${encodeURIComponent(url)}`,
       {
         method: 'GET',
         headers: {
           'x-rapidapi-key': RAPIDAPI_KEY,
-          'x-rapidapi-host': 'tiktok-video-downloader-api.p.rapidapi.com',
+          'x-rapidapi-host': 'tiktok-scrapper-videos-music-challenges-downloader.p.rapidapi.com',
         },
       },
       20000
@@ -98,15 +98,15 @@ async function extractTikTok(url: string) {
     }
 
     const rapidData = await rapidResponse.json()
-    console.log('[tiktok] RapidAPI response keys:', Object.keys(rapidData))
+    console.log('[tiktok] RapidAPI response:', JSON.stringify(rapidData).slice(0, 300))
 
-    // 优先获取音频链接（更小），其次是视频
-    const audioUrl = rapidData.audioUrl || rapidData.audio || rapidData.music
-    const videoUrl = rapidData.downloadUrl || rapidData.videoUrl || rapidData.video || rapidData.play
+    // 优先获取音频/音乐链接
+    const audioUrl = rapidData.music || rapidData.musicUrl || rapidData.audio || rapidData.audioUrl
+    const videoUrl = rapidData.video || rapidData.videoUrl || rapidData.play || rapidData.downloadUrl
     const downloadUrl = audioUrl || videoUrl
     const isAudio = !!audioUrl
 
-    console.log('[tiktok] Using:', isAudio ? 'audio' : 'video', 'URL')
+    console.log('[tiktok] Using:', isAudio ? 'audio' : 'video')
 
     if (!downloadUrl) {
       console.error('[tiktok] No download URL found in:', JSON.stringify(rapidData).slice(0, 500))
