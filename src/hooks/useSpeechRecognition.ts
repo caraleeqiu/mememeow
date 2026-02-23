@@ -122,8 +122,12 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
         // 麦克风权限被拒绝
         if (isIOSChrome()) {
           setError('iOS Chrome 不支持语音识别，请用 Safari 打开')
+        } else if (/iPhone|iPad|iPod/.test(navigator.userAgent)) {
+          setError('麦克风权限被禁用。请前往「设置 → Safari → 麦克风」开启')
+        } else if (/Android/.test(navigator.userAgent)) {
+          setError('麦克风权限被禁用。请在浏览器设置中允许麦克风访问')
         } else {
-          setError('请允许麦克风权限，或在设置中开启')
+          setError('麦克风权限被禁用。请点击地址栏左侧🔒图标，允许麦克风权限')
         }
         setIsListening(false)
       } else if (errorType === 'no-speech') {
@@ -132,10 +136,13 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
         setError('网络错误，请检查网络连接')
         setIsListening(false)
       } else if (errorType === 'audio-capture') {
-        setError('无法访问麦克风，请检查设备')
+        setError('无法访问麦克风，请检查设备是否有麦克风')
+        setIsListening(false)
+      } else if (errorType === 'service-not-allowed') {
+        setError('浏览器禁用了语音服务，请检查浏览器设置')
         setIsListening(false)
       } else {
-        setError('语音识别出错，请重试')
+        setError('语音识别出错，请刷新页面重试')
         setIsListening(false)
       }
     }
