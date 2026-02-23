@@ -51,16 +51,27 @@ interface UseSpeechRecognitionReturn {
   stopListening: () => void
   resetTranscript: () => void
   isSupported: boolean
+  error: string | null
+  clearError: () => void
+}
+
+// 检测 iOS Chrome（实际上用的是 Safari 内核）
+function isIOSChrome(): boolean {
+  const ua = navigator.userAgent
+  return /CriOS/.test(ua) && /iPhone|iPad|iPod/.test(ua)
 }
 
 export function useSpeechRecognition(): UseSpeechRecognitionReturn {
   const [isListening, setIsListening] = useState(false)
   const [transcript, setTranscript] = useState('')
+  const [error, setError] = useState<string | null>(null)
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null)
   const fullTranscriptRef = useRef('')
 
   const isSupported = typeof window !== 'undefined' &&
     ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)
+
+  const clearError = useCallback(() => setError(null), [])
 
   const startListening = useCallback(() => {
     if (!isSupported) return
@@ -105,8 +116,26 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
     }
 
     recognition.onerror = (event) => {
-      // 忽略 no-speech 错误，继续监听
-      if (event.error !== 'no-speech') {
+      const errorType = event.error
+
+      if (errorType === 'not-allowed') {
+        // 麦克风权限被拒绝
+        if (isIOSChrome()) {
+          setError('iOS Chrome 不支持语音识别，请用 Safari 打开')
+        } else {
+          setError('请允许麦克风权限，或在设置中开启')
+        }
+        setIsListening(false)
+      } else if (errorType === 'no-speech') {
+        // 忽略 no-speech 错误，继续监听
+      } else if (errorType === 'network') {
+        setError('网络错误，请检查网络连接')
+        setIsListening(false)
+      } else if (errorType === 'audio-capture') {
+        setError('无法访问麦克风，请检查设备')
+        setIsListening(false)
+      } else {
+        setError('语音识别出错，请重试')
         setIsListening(false)
       }
     }
@@ -142,6 +171,8 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
     toggleListening,
     stopListening,
     resetTranscript,
-    isSupported
+    isSupported,
+    error,
+    clearError
   }
 }

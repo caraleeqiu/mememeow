@@ -41,7 +41,7 @@ export function ReadingArea({
   const demoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
-  const { isListening, transcript, toggleListening, stopListening, resetTranscript, isSupported } = useSpeechRecognition()
+  const { isListening, transcript, toggleListening, stopListening, resetTranscript, isSupported, error: speechError, clearError } = useSpeechRecognition()
 
   // 保持回调函数的最新引用
   const onMoodChangeRef = useRef(onMoodChange)
@@ -311,7 +311,7 @@ export function ReadingArea({
         ) : (
           <>
             <p>你的浏览器不支持语音识别</p>
-            <p>请使用 Chrome 或 Safari 浏览器</p>
+            <p>请使用 Safari 或 Chrome 浏览器</p>
           </>
         )}
       </div>
@@ -392,6 +392,13 @@ export function ReadingArea({
       </div>
 
       <p className="reading-area__tip">匹配度 ≥70% 得 1🥕 · 集满 10🥕 看猫跳舞</p>
+
+      {speechError && (
+        <div className="reading-area__error" onClick={clearError}>
+          ⚠️ {speechError}
+          <span className="reading-area__error-dismiss">点击关闭</span>
+        </div>
+      )}
 
       {transcript && (
         <div className="reading-area__transcript">
