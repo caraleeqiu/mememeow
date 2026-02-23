@@ -351,7 +351,7 @@ export function ReadingArea({
         </button>
       </div>
 
-      <p className="reading-area__tip">匹配度 ≥80% 得 1🥕 · 集满 10🥕 看猫跳舞</p>
+      <p className="reading-area__tip">匹配度 ≥70% 得 1🥕 · 集满 10🥕 看猫跳舞</p>
 
       {transcript && (
         <div className="reading-area__transcript">
