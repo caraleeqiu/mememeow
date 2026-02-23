@@ -2,7 +2,14 @@ import { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import './Login.css'
 
+// 检测微信浏览器
+function isWeChatBrowser(): boolean {
+  const ua = navigator.userAgent.toLowerCase()
+  return ua.includes('micromessenger')
+}
+
 export function Login() {
+  const isWeChat = isWeChatBrowser()
   const [isLogin, setIsLogin] = useState(true)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -58,6 +65,11 @@ export function Login() {
 
   return (
     <div className="login">
+      {isWeChat && (
+        <div className="login__wechat-warning">
+          ⚠️ 微信浏览器不支持 Google 登录和语音功能，请点右上角「...」选择「在 Safari/浏览器中打开」
+        </div>
+      )}
       <div className="login__cat">
         <img
           src="/cat.jpg"
