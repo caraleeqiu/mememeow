@@ -18,7 +18,7 @@
 - 📄 支持上传 PDF 和 TXT 文件
 - ✏️ 支持直接粘贴英文文字
 - 🎤 实时语音识别跟读练习（70% 匹配度通过）
-- 🔊 Gemini TTS 示范朗读（有磁性的声音 + 卡拉OK式单词高亮）
+- 🔊 TTS 示范朗读（卡拉OK式单词高亮）
 - 🥕 萝卜积分激励系统
 - 💃 集满 10 萝卜看猫跳舞（4种音乐风格可选）
 - ✋ 点击猫咪击掌互动
@@ -33,7 +33,7 @@
 - **数据库**: Supabase (PostgreSQL)
 - **认证**: Supabase Auth (Google OAuth + 邮箱)
 - **语音识别**: Web Speech API
-- **语音合成**: Google Gemini TTS API
+- **语音合成**: Web Speech API (TTS)
 - **视频转写**: Google Gemini API
 - **视频下载**: RapidAPI (YouTube/TikTok)
 
@@ -146,7 +146,7 @@ mememeow/
 - Web Speech API 实时语音识别
 - 改进的匹配算法（Levenshtein 距离 + 词序权重）
 - 70% 匹配度通过，得 1 个萝卜
-- Gemini TTS 示范朗读（Enceladus 音色，有磁性）
+- 浏览器 TTS 示范朗读
 - 卡拉OK式单词高亮同步
 
 ### 萝卜猫跳舞
