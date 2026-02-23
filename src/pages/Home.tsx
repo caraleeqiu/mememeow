@@ -12,8 +12,15 @@ import './Home.css'
 
 type View = 'home' | 'reading' | 'dancing' | 'history' | 'mistakes' | 'stats' | 'music-select'
 
+// 检测微信浏览器
+function isWeChatBrowser(): boolean {
+  const ua = navigator.userAgent.toLowerCase()
+  return ua.includes('micromessenger')
+}
+
 export function Home() {
   const { user, profile, accessToken, logout, updateCarrots } = useAuth()
+  const isWeChat = isWeChatBrowser()
   const [view, setView] = useState<View>('home')
   const [catMood, setCatMood] = useState<CatMood>('idle')
   const [catMessage, setCatMessage] = useState<string>()
@@ -402,6 +409,11 @@ export function Home() {
 
   return (
     <div className="home">
+      {isWeChat && (
+        <div className="home__wechat-warning">
+          ⚠️ 微信浏览器不支持语音功能，请点右上角「...」选择「在 Safari/浏览器中打开」
+        </div>
+      )}
       <header className="home__header">
         <h1 className="home__logo">🥕 MeMeMeow</h1>
         <div className="home__user">
