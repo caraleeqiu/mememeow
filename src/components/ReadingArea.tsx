@@ -3,6 +3,12 @@ import { useSpeechRecognition } from '../hooks/useSpeechRecognition'
 import type { CatMood, ReadingResult, ProgressRecord } from '../types'
 import './ReadingArea.css'
 
+// 检测微信浏览器
+function isWeChatBrowser(): boolean {
+  const ua = navigator.userAgent.toLowerCase()
+  return ua.includes('micromessenger')
+}
+
 interface ReadingAreaProps {
   sentences: string[]
   contentId: string
@@ -269,11 +275,22 @@ export function ReadingArea({
     onMoodChangeRef.current('idle')
   }, [resetTranscript])
 
-  if (!isSupported) {
+  const isWeChat = isWeChatBrowser()
+
+  if (!isSupported || isWeChat) {
     return (
       <div className="reading-area reading-area--error">
-        <p>你的浏览器不支持语音识别</p>
-        <p>请使用 Chrome 或 Edge 浏览器</p>
+        {isWeChat ? (
+          <>
+            <p>⚠️ 微信浏览器不支持语音功能</p>
+            <p>请点右上角「...」选择「在 Safari/浏览器中打开」</p>
+          </>
+        ) : (
+          <>
+            <p>你的浏览器不支持语音识别</p>
+            <p>请使用 Chrome 或 Safari 浏览器</p>
+          </>
+        )}
       </div>
     )
   }
