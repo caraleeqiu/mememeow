@@ -134,7 +134,7 @@ function matchSpeech(original: string, spoken: string): { isMatch: boolean; scor
   const spokenWords = spokenNorm.split(' ').filter(w => w.length > 0)
 
   const score = wordSimilarity(originalWords, spokenWords)
-  return { isMatch: score >= 80, score }
+  return { isMatch: score >= 70, score }
 }
 
 // ============================================
