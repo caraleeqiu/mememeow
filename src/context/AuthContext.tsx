@@ -2,12 +2,8 @@ import { createContext, useContext, useState, useEffect } from 'react'
 import type { ReactNode } from 'react'
 import type { User, Session, AuthChangeEvent } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
-
-interface Profile {
-  id: string
-  email: string
-  carrots: number
-}
+import { log } from '../lib/logger'
+import type { Profile } from '../types'
 
 interface AuthContextType {
   user: User | null
@@ -95,7 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // 使用传入的 token，避免再次调用 getSession
       const authToken = token || supabaseKey
-      console.log('[loadProfile] Loading for userId:', userId, 'token:', authToken ? 'yes' : 'no')
+      log('loadProfile', 'Loading', { hasToken: !!authToken })
 
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 5000)
@@ -113,14 +109,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearTimeout(timeoutId)
 
       const data = await response.json()
-      console.log('[loadProfile] Response:', data)
+      log('loadProfile', 'Response received')
 
       if (data && data.length > 0) {
-        console.log('[loadProfile] Setting profile:', data[0])
+        log('loadProfile', 'Setting profile')
         setProfile(data[0])
       } else {
         // Profile 不存在，创建一个
-        console.log('[loadProfile] Profile not found, creating new one')
+        log('loadProfile', 'Profile not found, creating new one')
         const createResponse = await fetch(
           `${supabaseUrl}/rest/v1/profiles`,
           {
@@ -182,7 +178,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const updateCarrots = (carrots: number) => {
     if (profile) {
-      console.log('[updateCarrots] Updating UI:', profile.carrots, '->', carrots)
+      log('updateCarrots', 'Updating UI', { from: profile.carrots, to: carrots })
       setProfile({ ...profile, carrots })
       // 注意: 数据库更新由 reading.record() 处理，这里只更新 UI
     }

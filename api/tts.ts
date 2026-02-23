@@ -2,6 +2,30 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ''
 
+// 速率限制配置
+const RATE_LIMIT_WINDOW = 60 * 1000 // 1分钟
+const RATE_LIMIT_MAX = 30 // 每分钟最多30次请求
+
+// 简单的内存速率限制器（Vercel Serverless 环境下每个实例独立）
+const rateLimitMap = new Map<string, { count: number; resetTime: number }>()
+
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now()
+  const record = rateLimitMap.get(ip)
+
+  if (!record || now > record.resetTime) {
+    rateLimitMap.set(ip, { count: 1, resetTime: now + RATE_LIMIT_WINDOW })
+    return true
+  }
+
+  if (record.count >= RATE_LIMIT_MAX) {
+    return false
+  }
+
+  record.count++
+  return true
+}
+
 // 允许的域名白名单
 const ALLOWED_ORIGINS = [
   'https://mememeow.vercel.app',
@@ -38,6 +62,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
+  }
+
+  // 速率限制检查
+  const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0] ||
+                   req.headers['x-real-ip'] as string ||
+                   'unknown'
+
+  if (!checkRateLimit(clientIp)) {
+    return res.status(429).json({ error: '请求太频繁，请稍后再试' })
   }
 
   const { text, voice = DEFAULT_VOICE } = req.body
