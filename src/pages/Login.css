@@ -23,6 +23,15 @@
   z-index: 100;
 }
 
+.login__wechat-note {
+  color: #856404;
+  background: #FFF3CD;
+  padding: 12px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+
 .login__cat {
   margin-bottom: 24px;
 }
