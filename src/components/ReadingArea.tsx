@@ -39,6 +39,7 @@ export function ReadingArea({
   // 使用 ref 防止内存泄漏
   const isMountedRef = useRef(true)
   const demoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
 
   const { isListening, transcript, toggleListening, stopListening, resetTranscript, isSupported } = useSpeechRecognition()
 
@@ -65,7 +66,10 @@ export function ReadingArea({
 
     return () => {
       isMountedRef.current = false
-      window.speechSynthesis.cancel()
+      if (audioRef.current) {
+        audioRef.current.pause()
+        audioRef.current = null
+      }
       if (demoTimerRef.current) {
         clearInterval(demoTimerRef.current)
       }
@@ -95,16 +99,14 @@ export function ReadingArea({
     }
   }, [isListening])
 
-  // 预加载语音
-  useEffect(() => {
-    window.speechSynthesis.getVoices()
-  }, [])
-
-  // 示范朗读功能
-  const handleDemo = useCallback(() => {
+  // 示范朗读功能 - 使用 Gemini TTS
+  const handleDemo = useCallback(async () => {
     if (isDemoing) {
       // 停止示范
-      window.speechSynthesis.cancel()
+      if (audioRef.current) {
+        audioRef.current.pause()
+        audioRef.current = null
+      }
       if (demoTimerRef.current) {
         clearInterval(demoTimerRef.current)
         demoTimerRef.current = null
@@ -117,36 +119,71 @@ export function ReadingArea({
     const sentence = sentences[currentIndex]
     const words = sentence.split(/\s+/)
 
-    const utterance = new SpeechSynthesisUtterance(sentence)
-    utterance.lang = 'en-US'
-    utterance.rate = 0.85
-    utterance.pitch = 1
-
-    // 选择英语声音
-    const voices = window.speechSynthesis.getVoices()
-    const englishVoice = voices.find(v => v.lang.startsWith('en-') && v.name.includes('Female')) ||
-                         voices.find(v => v.lang.startsWith('en-'))
-    if (englishVoice) {
-      utterance.voice = englishVoice
-    }
-
-    let currentWordIndex = 0
-    const wordsCount = words.length
-    const estimatedDuration = sentence.length * 60
-
     setIsDemoing(true)
     setHighlightedWordIndex(0)
-    onMoodChangeRef.current('listening', '听示范...')
+    onMoodChangeRef.current('listening', '加载语音...')
 
-    const wordInterval = estimatedDuration / wordsCount
-    demoTimerRef.current = setInterval(() => {
-      currentWordIndex++
-      if (currentWordIndex < wordsCount && isMountedRef.current) {
-        setHighlightedWordIndex(currentWordIndex)
+    try {
+      // 调用 Gemini TTS API
+      const response = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: sentence })
+      })
+
+      if (!response.ok) {
+        throw new Error('TTS failed')
       }
-    }, wordInterval)
 
-    utterance.onend = () => {
+      const { audio, mimeType } = await response.json()
+
+      // 创建音频并播放
+      const audioBlob = new Blob(
+        [Uint8Array.from(atob(audio), c => c.charCodeAt(0))],
+        { type: mimeType }
+      )
+      const audioUrl = URL.createObjectURL(audioBlob)
+      const audioElement = new Audio(audioUrl)
+      audioRef.current = audioElement
+
+      // 单词高亮动画
+      let currentWordIndex = 0
+      const wordsCount = words.length
+
+      audioElement.onloadedmetadata = () => {
+        const duration = audioElement.duration * 1000
+        const wordInterval = duration / wordsCount
+
+        onMoodChangeRef.current('listening', '听示范...')
+
+        demoTimerRef.current = setInterval(() => {
+          currentWordIndex++
+          if (currentWordIndex < wordsCount && isMountedRef.current) {
+            setHighlightedWordIndex(currentWordIndex)
+          }
+        }, wordInterval)
+      }
+
+      audioElement.onended = () => {
+        URL.revokeObjectURL(audioUrl)
+        if (demoTimerRef.current) {
+          clearInterval(demoTimerRef.current)
+          demoTimerRef.current = null
+        }
+        if (isMountedRef.current) {
+          setIsDemoing(false)
+          setHighlightedWordIndex(-1)
+          onMoodChangeRef.current('idle', '轮到你啦！')
+        }
+      }
+
+      audioElement.onerror = () => {
+        URL.revokeObjectURL(audioUrl)
+        throw new Error('Audio playback failed')
+      }
+
+      await audioElement.play()
+    } catch {
       if (demoTimerRef.current) {
         clearInterval(demoTimerRef.current)
         demoTimerRef.current = null
@@ -154,23 +191,9 @@ export function ReadingArea({
       if (isMountedRef.current) {
         setIsDemoing(false)
         setHighlightedWordIndex(-1)
-        onMoodChangeRef.current('idle', '轮到你啦！')
+        onMoodChangeRef.current('encouraging', '示范播放失败，请重试')
       }
     }
-
-    utterance.onerror = () => {
-      if (demoTimerRef.current) {
-        clearInterval(demoTimerRef.current)
-        demoTimerRef.current = null
-      }
-      if (isMountedRef.current) {
-        setIsDemoing(false)
-        setHighlightedWordIndex(-1)
-        onMoodChangeRef.current('encouraging', '示范播放失败')
-      }
-    }
-
-    window.speechSynthesis.speak(utterance)
   }, [isDemoing, sentences, currentIndex])
 
   // 检测是否为英文
