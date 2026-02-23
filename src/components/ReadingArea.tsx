@@ -114,17 +114,23 @@ export function ReadingArea({
     }
   }, [isListening])
 
-  // 使用浏览器 TTS 作为降级方案
+  // 使用浏览器 TTS
   const playBrowserTTS = useCallback((sentence: string, words: string[]) => {
     const utterance = new SpeechSynthesisUtterance(sentence)
     utterance.lang = 'en-US'
-    utterance.rate = 0.85
+    utterance.rate = 0.92    // 稍快一点更自然
+    utterance.pitch = 1.0    // 正常音调
 
-    // 选择英语声音
+    // 选择更自然的英语声音（优先选择 Google/Apple 的高质量声音）
     const voices = window.speechSynthesis.getVoices()
-    const englishVoice = voices.find(v => v.lang.startsWith('en-'))
-    if (englishVoice) {
-      utterance.voice = englishVoice
+    const preferredVoice =
+      voices.find(v => v.lang === 'en-US' && v.name.includes('Samantha')) ||  // iOS/Mac 优质声音
+      voices.find(v => v.lang === 'en-US' && v.name.includes('Google')) ||    // Android Google 声音
+      voices.find(v => v.lang === 'en-US' && !v.localService) ||              // 在线声音（通常更自然）
+      voices.find(v => v.lang.startsWith('en-US')) ||
+      voices.find(v => v.lang.startsWith('en-'))
+    if (preferredVoice) {
+      utterance.voice = preferredVoice
     }
 
     let currentWordIndex = 0
