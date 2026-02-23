@@ -273,25 +273,16 @@ export const content = {
 
   async extract(url: string, userId?: string): Promise<Content & { totalSentences: number }> {
     const urlLower = url.toLowerCase()
-    let platform = 'news'
-    let type = 'article'
+    let platform = ''
 
     if (urlLower.includes('youtube.com') || urlLower.includes('youtu.be')) {
       platform = 'youtube'
-      type = 'video'
     } else if (urlLower.includes('tiktok.com')) {
       platform = 'tiktok'
-      type = 'video'
-    } else if (urlLower.includes('instagram.com')) {
-      platform = 'instagram'
-      type = 'video'
-    } else if (urlLower.includes('twitter.com') || urlLower.includes('x.com')) {
-      platform = 'twitter'
-      type = 'video'
     }
 
-    if (type !== 'video') {
-      throw new Error('目前只支持视频平台（TikTok、YouTube、Instagram、Twitter）。其他内容请使用"粘贴文字"或"上传文件"功能。')
+    if (!platform) {
+      throw new Error('目前只支持 YouTube / YouTube Shorts / TikTok。其他内容请使用"粘贴文字"或"上传文件"功能。')
     }
 
     if (!userId) throw new Error('请先登录')
