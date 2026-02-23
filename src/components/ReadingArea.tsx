@@ -9,6 +9,21 @@ function isWeChatBrowser(): boolean {
   return ua.includes('micromessenger')
 }
 
+// 检测 iOS 版本是否支持 Web Speech API (需要 14.5+)
+function getIOSVersion(): number | null {
+  const ua = navigator.userAgent
+  const match = ua.match(/OS (\d+)_(\d+)/)
+  if (match && /iPhone|iPad|iPod/.test(ua)) {
+    return parseFloat(`${match[1]}.${match[2]}`)
+  }
+  return null
+}
+
+function isOldiOS(): boolean {
+  const version = getIOSVersion()
+  return version !== null && version < 14.5
+}
+
 interface ReadingAreaProps {
   sentences: string[]
   contentId: string
@@ -299,14 +314,21 @@ export function ReadingArea({
   }, [resetTranscript])
 
   const isWeChat = isWeChatBrowser()
+  const oldiOS = isOldiOS()
 
-  if (!isSupported || isWeChat) {
+  if (!isSupported || isWeChat || oldiOS) {
     return (
       <div className="reading-area reading-area--error">
         {isWeChat ? (
           <>
             <p>⚠️ 微信浏览器不支持语音功能</p>
             <p>请点右上角「...」选择「在 Safari/浏览器中打开」</p>
+          </>
+        ) : oldiOS ? (
+          <>
+            <p>⚠️ iOS 版本过低</p>
+            <p>语音识别需要 iOS 14.5 或更高版本</p>
+            <p>请升级系统后再试</p>
           </>
         ) : (
           <>
