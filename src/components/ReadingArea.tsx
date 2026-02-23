@@ -114,10 +114,65 @@ export function ReadingArea({
     }
   }, [isListening])
 
-  // 示范朗读功能 - 使用 Gemini TTS
+  // 使用浏览器 TTS 作为降级方案
+  const playBrowserTTS = useCallback((sentence: string, words: string[]) => {
+    const utterance = new SpeechSynthesisUtterance(sentence)
+    utterance.lang = 'en-US'
+    utterance.rate = 0.85
+
+    // 选择英语声音
+    const voices = window.speechSynthesis.getVoices()
+    const englishVoice = voices.find(v => v.lang.startsWith('en-'))
+    if (englishVoice) {
+      utterance.voice = englishVoice
+    }
+
+    let currentWordIndex = 0
+    const wordsCount = words.length
+    const estimatedDuration = sentence.length * 60
+
+    onMoodChangeRef.current('listening', '听示范...')
+
+    const wordInterval = estimatedDuration / wordsCount
+    demoTimerRef.current = setInterval(() => {
+      currentWordIndex++
+      if (currentWordIndex < wordsCount && isMountedRef.current) {
+        setHighlightedWordIndex(currentWordIndex)
+      }
+    }, wordInterval)
+
+    utterance.onend = () => {
+      if (demoTimerRef.current) {
+        clearInterval(demoTimerRef.current)
+        demoTimerRef.current = null
+      }
+      if (isMountedRef.current) {
+        setIsDemoing(false)
+        setHighlightedWordIndex(-1)
+        onMoodChangeRef.current('idle', '轮到你啦！')
+      }
+    }
+
+    utterance.onerror = () => {
+      if (demoTimerRef.current) {
+        clearInterval(demoTimerRef.current)
+        demoTimerRef.current = null
+      }
+      if (isMountedRef.current) {
+        setIsDemoing(false)
+        setHighlightedWordIndex(-1)
+        onMoodChangeRef.current('encouraging', '播放失败')
+      }
+    }
+
+    window.speechSynthesis.speak(utterance)
+  }, [])
+
+  // 示范朗读功能 - 优先 Gemini TTS，失败时降级到浏览器 TTS
   const handleDemo = useCallback(async () => {
     if (isDemoing) {
       // 停止示范
+      window.speechSynthesis.cancel()
       if (audioRef.current) {
         audioRef.current.pause()
         audioRef.current = null
@@ -139,15 +194,21 @@ export function ReadingArea({
     onMoodChangeRef.current('listening', '加载语音...')
 
     try {
-      // 调用 Gemini TTS API
+      // 调用 Gemini TTS API（带超时）
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 10000) // 10秒超时
+
       const response = await fetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: sentence })
+        body: JSON.stringify({ text: sentence }),
+        signal: controller.signal
       })
 
+      clearTimeout(timeoutId)
+
       if (!response.ok) {
-        throw new Error('TTS failed')
+        throw new Error('TTS API failed')
       }
 
       const { audio, mimeType } = await response.json()
@@ -199,17 +260,22 @@ export function ReadingArea({
 
       await audioElement.play()
     } catch {
-      if (demoTimerRef.current) {
-        clearInterval(demoTimerRef.current)
-        demoTimerRef.current = null
-      }
-      if (isMountedRef.current) {
-        setIsDemoing(false)
-        setHighlightedWordIndex(-1)
-        onMoodChangeRef.current('encouraging', '示范播放失败，请重试')
+      // Gemini TTS 失败，降级到浏览器 TTS
+      if (isMountedRef.current && 'speechSynthesis' in window) {
+        playBrowserTTS(sentence, words)
+      } else {
+        if (demoTimerRef.current) {
+          clearInterval(demoTimerRef.current)
+          demoTimerRef.current = null
+        }
+        if (isMountedRef.current) {
+          setIsDemoing(false)
+          setHighlightedWordIndex(-1)
+          onMoodChangeRef.current('encouraging', '示范播放失败，请重试')
+        }
       }
     }
-  }, [isDemoing, sentences, currentIndex])
+  }, [isDemoing, sentences, currentIndex, playBrowserTTS])
 
   // 检测是否为英文
   const isEnglishText = useCallback((text: string): boolean => {
