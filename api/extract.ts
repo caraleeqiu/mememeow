@@ -6,7 +6,7 @@ import ytdl from '@distube/ytdl-core'
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ''
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || ''
 
-const API_VERSION = 'v21-security-optimized'
+const API_VERSION = 'v22-rapidapi-subtitles'
 
 // 允许的域名白名单
 const ALLOWED_ORIGINS = [
@@ -301,39 +301,93 @@ async function extractYouTubeWithGemini(videoId: string) {
   const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`
   log('youtube-gemini', 'Processing', { videoId })
 
-  let audioBase64 = ''
   let title = 'YouTube Video'
 
-  // 方法1: ytdl-core（优先，无 IP 限制）
-  if (!audioBase64) {
+  // 方法1: RapidAPI 字幕（优先，无 IP 限制）
+  if (RAPIDAPI_KEY) {
     try {
-      log('youtube-gemini', 'Trying ytdl-core...')
-      const info = await ytdl.getInfo(youtubeUrl)
-      title = info.videoDetails.title
+      log('youtube-gemini', 'Trying RapidAPI subtitles...')
+      const rapidResponse = await fetchWithTimeout(
+        `https://youtube-media-downloader.p.rapidapi.com/v2/video/details?videoId=${videoId}`,
+        {
+          method: 'GET',
+          headers: {
+            'x-rapidapi-key': RAPIDAPI_KEY,
+            'x-rapidapi-host': 'youtube-media-downloader.p.rapidapi.com',
+          },
+        },
+        15000
+      )
 
-      const audioFormats = ytdl.filterFormats(info.formats, 'audioonly')
-      if (audioFormats.length > 0) {
-        const format = audioFormats.sort((a, b) =>
-          (Number(a.contentLength) || 0) - (Number(b.contentLength) || 0)
-        )[0]
+      if (rapidResponse.ok) {
+        const rapidData = await rapidResponse.json()
+        title = rapidData.title || title
 
-        const chunks: Buffer[] = []
-        const stream = ytdl(youtubeUrl, { format })
+        // 检查是否有字幕
+        if (rapidData.subtitles?.items && rapidData.subtitles.items.length > 0) {
+          // 优先选择英文字幕
+          const englishSub = rapidData.subtitles.items.find(
+            (s: { lang: string }) => s.lang?.toLowerCase().includes('en')
+          )
+          const subtitleItem = englishSub || rapidData.subtitles.items[0]
+          const subtitleUrl = subtitleItem?.url
 
-        await new Promise<void>((resolve, reject) => {
-          const timeout = setTimeout(() => reject(new Error('Download timeout')), 30000)
-          stream.on('data', (chunk: Buffer) => chunks.push(chunk))
-          stream.on('end', () => { clearTimeout(timeout); resolve() })
-          stream.on('error', (err) => { clearTimeout(timeout); reject(err) })
-        })
+          if (subtitleUrl) {
+            log('youtube-gemini', 'Found subtitle', { lang: subtitleItem.lang })
+            const subResponse = await fetchWithTimeout(subtitleUrl, {}, 10000)
 
-        audioBase64 = Buffer.concat(chunks).toString('base64')
-        log('youtube-gemini', 'ytdl-core success', { sizeKB: Math.round(audioBase64.length / 1024) })
+            if (subResponse.ok) {
+              const xmlText = await subResponse.text()
+              const sentences = parseXmlSubtitles(xmlText)
+
+              if (sentences.length > 0) {
+                log('youtube-gemini', 'RapidAPI subtitles success', { sentences: sentences.length })
+                return {
+                  title,
+                  sentences: sentences.slice(0, 50),
+                  platform: 'youtube',
+                  type: 'video',
+                }
+              }
+            }
+          }
+        }
       }
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : 'unknown'
-      log('youtube-gemini', 'ytdl-core failed', { error: msg })
+      log('youtube-gemini', 'RapidAPI subtitles failed', { error: msg })
     }
+  }
+
+  // 方法2: ytdl-core 下载音频 + Gemini 转写（备用）
+  let audioBase64 = ''
+  try {
+    log('youtube-gemini', 'Trying ytdl-core...')
+    const info = await ytdl.getInfo(youtubeUrl)
+    title = info.videoDetails.title
+
+    const audioFormats = ytdl.filterFormats(info.formats, 'audioonly')
+    if (audioFormats.length > 0) {
+      const format = audioFormats.sort((a, b) =>
+        (Number(a.contentLength) || 0) - (Number(b.contentLength) || 0)
+      )[0]
+
+      const chunks: Buffer[] = []
+      const stream = ytdl(youtubeUrl, { format })
+
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('Download timeout')), 30000)
+        stream.on('data', (chunk: Buffer) => chunks.push(chunk))
+        stream.on('end', () => { clearTimeout(timeout); resolve() })
+        stream.on('error', (err) => { clearTimeout(timeout); reject(err) })
+      })
+
+      audioBase64 = Buffer.concat(chunks).toString('base64')
+      log('youtube-gemini', 'ytdl-core success', { sizeKB: Math.round(audioBase64.length / 1024) })
+    }
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown'
+    log('youtube-gemini', 'ytdl-core failed', { error: msg })
   }
 
   // 方法3: cobalt
@@ -391,6 +445,54 @@ Rules:
     platform: 'youtube',
     type: 'video',
   }
+}
+
+// 解析 XML 字幕
+function parseXmlSubtitles(xmlText: string): string[] {
+  const sentences: string[] = []
+  // 匹配 <text start="..." dur="...">内容</text>
+  const textRegex = /<text[^>]*>([^<]*)<\/text>/g
+  let match
+  let currentSentence = ''
+
+  while ((match = textRegex.exec(xmlText)) !== null) {
+    // 解码 HTML 实体
+    let text = match[1]
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/\n/g, ' ')
+      .trim()
+
+    if (!text) continue
+
+    currentSentence += (currentSentence ? ' ' : '') + text
+
+    // 遇到句末标点或超长时断句
+    if (/[.!?]$/.test(currentSentence) || currentSentence.length > 150) {
+      if (currentSentence.length >= 10 && currentSentence.length <= 200) {
+        sentences.push(currentSentence)
+      } else if (currentSentence.length > 200) {
+        // 拆分过长句子
+        const parts = currentSentence.split(/(?<=[.!?])\s+/)
+        for (const part of parts) {
+          if (part.length >= 10 && part.length <= 200) {
+            sentences.push(part.trim())
+          }
+        }
+      }
+      currentSentence = ''
+    }
+  }
+
+  // 处理剩余内容
+  if (currentSentence.length >= 10 && currentSentence.length <= 200) {
+    sentences.push(currentSentence)
+  }
+
+  return sentences
 }
 
 // 快速语言检测
