@@ -6,7 +6,7 @@ import ytdl from '@distube/ytdl-core'
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ''
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || ''
 
-const API_VERSION = 'v22-rapidapi-subtitles'
+const API_VERSION = 'v23-friendly-errors'
 
 // 允许的域名白名单
 const ALLOWED_ORIGINS = [
@@ -162,11 +162,17 @@ async function extractTikTok(url: string) {
     20000
   )
 
+  const rapidData = await rapidResponse.json()
+
+  // 检查配额超限
+  if (rapidData.message?.includes('exceeded') || rapidData.message?.includes('quota')) {
+    throw new Error('TikTok 今日提取次数已用完，请明天再试～')
+  }
+
   if (!rapidResponse.ok) {
     throw new Error('无法获取 TikTok 视频信息')
   }
 
-  const rapidData = await rapidResponse.json()
   // 新 API 返回格式：video_url 或 videoUrl
   const downloadUrl = rapidData.video_url || rapidData.videoUrl || rapidData.downloadUrl || rapidData.play
 
