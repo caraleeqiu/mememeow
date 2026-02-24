@@ -148,15 +148,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 async function extractTikTok(url: string) {
   log('tiktok', 'Extracting', { url: url.slice(0, 50) })
 
-  // Step 1: 获取下载链接
+  // Step 1: 获取下载链接（使用 tiktok-downloader25 API）
   log('tiktok', 'Getting download URL...')
   const rapidResponse = await fetchWithTimeout(
-    `https://tiktok-video-downloader-api.p.rapidapi.com/media?videoUrl=${encodeURIComponent(url)}`,
+    `https://tiktok-downloader25.p.rapidapi.com/tiktok?tiktokUrl=${encodeURIComponent(url)}`,
     {
       method: 'GET',
       headers: {
         'x-rapidapi-key': RAPIDAPI_KEY,
-        'x-rapidapi-host': 'tiktok-video-downloader-api.p.rapidapi.com',
+        'x-rapidapi-host': 'tiktok-downloader25.p.rapidapi.com',
       },
     },
     20000
@@ -167,7 +167,8 @@ async function extractTikTok(url: string) {
   }
 
   const rapidData = await rapidResponse.json()
-  const downloadUrl = rapidData.downloadUrl || rapidData.videoUrl || rapidData.play
+  // 新 API 返回格式：video_url 或 videoUrl
+  const downloadUrl = rapidData.video_url || rapidData.videoUrl || rapidData.downloadUrl || rapidData.play
 
   if (!downloadUrl) {
     throw new Error('无法获取下载链接')
