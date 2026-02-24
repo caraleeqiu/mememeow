@@ -304,17 +304,17 @@ async function extractYouTubeWithGemini(videoId: string) {
   let audioBase64 = ''
   let title = 'YouTube Video'
 
-  // 方法1: RapidAPI
+  // 方法1: RapidAPI youtube-media-downloader
   if (RAPIDAPI_KEY) {
     try {
-      log('youtube-gemini', 'Trying RapidAPI...')
+      log('youtube-gemini', 'Trying RapidAPI youtube-media-downloader...')
       const rapidResponse = await fetchWithTimeout(
-        `https://youtube-mp3-audio-video-downloader.p.rapidapi.com/get_m4a_download_link/${videoId}`,
+        `https://youtube-media-downloader.p.rapidapi.com/v2/video/details?videoId=${videoId}`,
         {
           method: 'GET',
           headers: {
             'x-rapidapi-key': RAPIDAPI_KEY,
-            'x-rapidapi-host': 'youtube-mp3-audio-video-downloader.p.rapidapi.com',
+            'x-rapidapi-host': 'youtube-media-downloader.p.rapidapi.com',
           },
         },
         25000
@@ -322,14 +322,19 @@ async function extractYouTubeWithGemini(videoId: string) {
 
       if (rapidResponse.ok) {
         const rapidData = await rapidResponse.json()
-        const audioUrl = rapidData.file
+        title = rapidData.title || title
 
-        if (audioUrl) {
-          const audioResponse = await fetchWithTimeout(audioUrl, {}, 30000)
-          if (audioResponse.ok) {
-            const audioBuffer = await audioResponse.arrayBuffer()
-            audioBase64 = Buffer.from(audioBuffer).toString('base64')
-            log('youtube-gemini', 'RapidAPI success', { sizeKB: Math.round(audioBase64.length / 1024) })
+        // 获取音频下载链接
+        const audioItems = rapidData.audios?.items || []
+        if (audioItems.length > 0) {
+          const audioUrl = audioItems[0].url
+          if (audioUrl) {
+            const audioResponse = await fetchWithTimeout(audioUrl, {}, 60000)
+            if (audioResponse.ok) {
+              const audioBuffer = await audioResponse.arrayBuffer()
+              audioBase64 = Buffer.from(audioBuffer).toString('base64')
+              log('youtube-gemini', 'RapidAPI success', { sizeKB: Math.round(audioBase64.length / 1024) })
+            }
           }
         }
       }
